@@ -568,6 +568,22 @@
             text-decoration: underline;
         }
 
+        /* 板块描述样式 */
+        .index-description {
+            background-color: #f8f9fa;
+            color: #555;
+            font-size: 13px;
+            line-height: 1.6;
+            padding: 10px 15px;
+            text-align: left;
+            border-left: 3px solid #667eea;
+        }
+
+        .index-description.empty {
+            color: #999;
+            font-style: italic;
+        }
+
         img {
             max-width: 100%;
             height: auto;
@@ -825,6 +841,11 @@
                 {% for i in range((list_type|length * list_formula|length) - 3) %}
                 <td></td>
                 {% endfor %}
+            </tr>
+            <tr>
+                <td colspan="{{ list_type|length * list_formula|length }}" class="index-description {{ 'empty' if not zs_descriptions.get(str_zs) else '' }}">
+                    {{ zs_descriptions.get(str_zs, '暂无描述') }}
+                </td>
             </tr>
             <tr>
                 {% for str_type in list_type %}

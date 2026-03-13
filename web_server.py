@@ -12,6 +12,7 @@ from database.FundDatabase import FundDatabase
 from scripts.txt2str import file2json
 from utils.Logger import Logger
 from utils.errors import api_endpoint, success_response, error_response, NotFoundError, APIError, ValidationError
+from utils.IndexDescription import initialize_descriptions, load_descriptions_from_config, save_descriptions_to_config
 from datetime import datetime
 import json
 import os
@@ -35,6 +36,41 @@ db = FundDatabase(DB_FILE)
 fund_api = FundValuationAPI(db_path=DB_FILE)
 
 
+def ensure_descriptions_initialized():
+    """确保板块描述已初始化"""
+    try:
+        # 加载现有配置
+        ui_config = file2json(UI_CONFIG_FILE) if os.path.exists(UI_CONFIG_FILE) else {}
+        zs_all = ui_config.get('zs_all', {})
+        
+        if not zs_all:
+            return
+        
+        # 检查是否已有描述数据
+        existing_desc = ui_config.get('zs_descriptions', {})
+        
+        # 检查是否需要初始化（首次运行或新增板块）
+        need_init = False
+        for code in zs_all:
+            if code not in existing_desc or not existing_desc.get(code):
+                need_init = True
+                break
+        
+        if need_init:
+            log.info("[描述初始化] 检测到需要初始化板块描述，正在处理...")
+            descriptions = initialize_descriptions(UI_CONFIG_FILE, zs_all)
+            log.info(f"[描述初始化] 完成，共 {len(descriptions)} 个板块描述")
+        else:
+            log.info(f"[描述初始化] 所有板块描述已存在，共 {len(existing_desc)} 个")
+            
+    except Exception as e:
+        log.error(f"[描述初始化] 初始化失败: {e}")
+
+
+# 启动时初始化板块描述
+ensure_descriptions_initialized()
+
+
 def generate_monitor_html():
     """生成监控页面HTML"""
     try:
@@ -47,6 +83,7 @@ def generate_monitor_html():
         list_type = ui_config.get('type_all', ['D', 'W', 'M'])
         list_formula = ui_config.get('formula_all', ['MACD'])
         int_unitWidth = ui_config.get('unitWidth', -5)
+        zs_descriptions = ui_config.get('zs_descriptions', {})
         
         # 生成HTML
         return render_template(
@@ -56,6 +93,7 @@ def generate_monitor_html():
             list_type=list_type,
             list_formula=list_formula,
             int_unitWidth=int_unitWidth,
+            zs_descriptions=zs_descriptions,
             update_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         )
     except Exception as e:
@@ -102,6 +140,7 @@ def get_config():
         'user_positions': user_positions,
         'fund_holdings': fund_holdings_formatted,
         'zs_all': ui_config.get('zs_all', {}),
+        'zs_descriptions': ui_config.get('zs_descriptions', {}),
         'type_all': ui_config.get('type_all', ['D', 'W', 'M']),
         'formula_all': ui_config.get('formula_all', ['MACD']),
         'unitWidth': ui_config.get('unitWidth', -5)
@@ -116,9 +155,13 @@ def save_config():
     """保存配置信息（只保存UI配置）"""
     data = request.json
     
+    # 加载现有配置以保留描述信息
+    existing_config = file2json(UI_CONFIG_FILE) if os.path.exists(UI_CONFIG_FILE) else {}
+    
     # 只保存UI相关配置
     ui_config = {
         'zs_all': data.get('zs_all', {}),
+        'zs_descriptions': existing_config.get('zs_descriptions', {}),  # 保留描述信息
         'type_all': data.get('type_all', ['D', 'W', 'M']),
         'formula_all': data.get('formula_all', ['MACD']),
         'unitWidth': data.get('unitWidth', -5)
@@ -130,6 +173,79 @@ def save_config():
     log.info("UI配置保存成功")
     
     return success_response(None, '配置保存成功')
+
+
+@app.route('/api/index/descriptions', methods=['GET'])
+@api_endpoint
+def get_index_descriptions():
+    """获取所有板块指数描述"""
+    ui_config = file2json(UI_CONFIG_FILE) if os.path.exists(UI_CONFIG_FILE) else {}
+    descriptions = ui_config.get('zs_descriptions', {})
+    return success_response(descriptions)
+
+
+@app.route('/api/index/description/<index_code>', methods=['GET'])
+@api_endpoint
+def get_single_index_description(index_code):
+    """获取单个板块指数描述"""
+    ui_config = file2json(UI_CONFIG_FILE) if os.path.exists(UI_CONFIG_FILE) else {}
+    descriptions = ui_config.get('zs_descriptions', {})
+    
+    if index_code in descriptions:
+        return success_response({
+            'code': index_code,
+            'description': descriptions[index_code]
+        })
+    else:
+        return error_response(NotFoundError('板块描述', index_code))
+
+
+@app.route('/api/index/description/<index_code>', methods=['PUT'])
+@api_endpoint
+def update_index_description(index_code):
+    """更新单个板块指数描述"""
+    data = request.json
+    description = data.get('description', '')
+    
+    # 加载现有配置
+    ui_config = file2json(UI_CONFIG_FILE) if os.path.exists(UI_CONFIG_FILE) else {}
+    
+    # 更新描述
+    if 'zs_descriptions' not in ui_config:
+        ui_config['zs_descriptions'] = {}
+    
+    ui_config['zs_descriptions'][index_code] = description
+    
+    # 保存配置
+    with open(UI_CONFIG_FILE, 'w', encoding='utf-8') as f:
+        json.dump(ui_config, f, ensure_ascii=False, indent=2)
+    
+    log.info(f"更新板块 {index_code} 描述: {description[:50]}...")
+    return success_response(None, '描述更新成功')
+
+
+@app.route('/api/index/descriptions/refresh', methods=['POST'])
+@api_endpoint
+def refresh_index_descriptions():
+    """强制刷新所有板块指数描述"""
+    try:
+        ui_config = file2json(UI_CONFIG_FILE) if os.path.exists(UI_CONFIG_FILE) else {}
+        zs_all = ui_config.get('zs_all', {})
+        
+        if not zs_all:
+            return error_response(APIError('没有可刷新的板块数据', 400, 'NO_DATA'))
+        
+        # 重新初始化描述
+        from utils.IndexDescription import initialize_descriptions
+        descriptions = initialize_descriptions(UI_CONFIG_FILE, zs_all)
+        
+        return success_response({
+            'count': len(descriptions),
+            'descriptions': descriptions
+        }, '描述刷新成功')
+    except Exception as e:
+        log.error(f"刷新描述失败: {e}")
+        return error_response(APIError(f'刷新描述失败: {str(e)}', 500, 'REFRESH_ERROR'))
 
 
 @app.route('/api/fund/holdings/<fund_code>', methods=['GET'])

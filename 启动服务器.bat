@@ -1,18 +1,18 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-echo ========================================
-echo   基金估值与K线监控系统
-echo ========================================
-echo.
-echo 正在启动Web服务器...
-echo 启动后将自动打开浏览器 http://localhost:5000
-echo.
+
+rem 删除旧的VBS文件（如果存在）
+if exist "run_hidden.vbs" del /f "run_hidden.vbs"
+
+rem 创建隐藏运行的VBS脚本
+echo Set WshShell = CreateObject("WScript.Shell") > run_hidden.vbs
+echo WshShell.Run "python web_server.py", 0, False >> run_hidden.vbs
+echo Set WshShell = Nothing >> run_hidden.vbs
 
 rem 启动浏览器
 start http://localhost:5000
 
-rem 延迟1秒后启动服务器
+rem 延迟1秒后启动服务器（隐藏窗口）
 timeout /t 1 /nobreak >nul
-python web_server.py
-pause
+wscript "run_hidden.vbs"

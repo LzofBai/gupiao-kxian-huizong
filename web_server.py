@@ -651,6 +651,30 @@ def update_fund_position(fund_code):
 # 如需静态HTML功能，请参考文档中的说明
 
 
+import signal
+
+# 全局变量，用于控制服务器关闭
+server_shutdown = False
+
+@app.route('/api/exit', methods=['POST'])
+@api_endpoint
+def exit_server():
+    """退出服务器并终止程序"""
+    global server_shutdown
+    log.info("收到退出请求，服务器即将关闭...")
+    server_shutdown = True
+    
+    # 使用定时器延迟退出，确保API响应能返回给客户端
+    import threading
+    def delayed_exit():
+        time.sleep(1)
+        log.info("服务器已关闭")
+        os._exit(0)
+    
+    threading.Thread(target=delayed_exit, daemon=True).start()
+    return success_response(None, '服务器正在关闭...')
+
+
 if __name__ == '__main__':
     print("="*60)
     print("基金估值与K线监控系统")
@@ -662,4 +686,4 @@ if __name__ == '__main__':
     print("\n按 Ctrl+C 停止服务\n")
     print("="*60)
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)

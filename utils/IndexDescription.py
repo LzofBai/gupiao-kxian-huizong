@@ -16,6 +16,25 @@ DESCRIPTION_CACHE_FILE = 'data/zs_descriptions_cache.json'
 # 板块描述API配置
 # 使用东方财富或同花顺的公开API获取板块信息
 EASTMONEY_QUOTE_API = "https://searchapi.eastmoney.com/api/suggest/get"
+EASTMONEY_KLINE_API = "https://push2.eastmoney.com/api/qt/stock/get"
+
+# 联网获取开关（可通过环境变量控制）
+ENABLE_ONLINE_FETCH = os.environ.get('ENABLE_INDEX_DESC_FETCH', 'true').lower() == 'true'
+
+
+def extract_pure_code(index_code: str) -> str:
+    """
+    从指数代码中提取纯数字代码
+    
+    Args:
+        index_code: 原始指数代码，如 "1.000001", "90.BK0701"
+        
+    Returns:
+        纯数字代码
+    """
+    if '.' in index_code:
+        return index_code.split('.')[-1]
+    return index_code
 
 
 def get_index_description_from_eastmoney(index_code: str, index_name: str) -> Optional[str]:
@@ -65,6 +84,151 @@ def get_index_description_from_eastmoney(index_code: str, index_name: str) -> Op
     except Exception as e:
         print(f"[描述获取] 获取 {index_name}({index_code}) 描述失败: {e}")
         return None
+
+
+def fetch_index_info_from_eastmoney(index_code: str, index_name: str) -> Optional[Dict]:
+    """
+    从东方财富获取指数详细信息
+    
+    Args:
+        index_code: 指数代码
+        index_name: 指数名称
+        
+    Returns:
+        指数信息字典，获取失败返回None
+    """
+    try:
+        # 提取纯代码
+        pure_code = extract_pure_code(index_code)
+        
+        # 判断市场类型
+        if index_code.startswith('0.'):
+            secid = f"0.{pure_code}"  # 深圳
+        elif index_code.startswith('1.'):
+            secid = f"1.{pure_code}"  # 上海
+        elif index_code.startswith('90.'):
+            secid = f"90.{pure_code}"  # 板块
+        elif index_code.startswith('2.'):
+            secid = f"2.{pure_code}"  # 指数
+        else:
+            secid = index_code
+        
+        params = {
+            'secid': secid,
+            'fields': 'f43,f44,f45,f46,f47,f48,f49,f50,f51,f52,f57,f58,f60,f61,f62,f63,f64,f65,f66,f67,f68,f69,f70,f71,f72,f73,f74,f75,f76,f77,f78,f79,f80,f81,f82,f83,f84,f85,f86,f87,f88,f89,f90,f91,f92,f93,f94,f95,f96,f97,f98,f99,f100,f101,f102,f103,f104,f105,f106,f107,f108,f109,f110,f111,f112,f113,f114,f115,f116,f117,f118,f119,f120,f121,f122,f123,f124,f125,f126,f127,f128,f129,f130,f131,f132,f133,f134,f135,f136,f137,f138,f139,f140,f141,f142,f143,f144,f145,f146,f147,f148,f149,f150,f151,f152,f153,f154,f155,f156,f157,f158,f159,f160,f161,f162,f163,f164,f165,f166,f167,f168,f169,f170,f171,f172,f173,f174,f175,f176,f177,f178,f179,f180,f181,f182,f183,f184,f185,f186,f187,f188,f189,f190,f191,f192,f193,f194,f195,f196,f197,f198,f199,f200',
+            '_': str(int(time.time() * 1000))
+        }
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': 'https://quote.eastmoney.com/'
+        }
+        
+        url = 'https://push2.eastmoney.com/api/qt/stock/get'
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        if data and 'data' in data:
+            stock_data = data['data']
+            return {
+                'code': stock_data.get('f57', ''),
+                'name': stock_data.get('f58', ''),
+                'market_type': stock_data.get('f107', ''),
+                'type_name': stock_data.get('f57', ''),
+            }
+        
+        return None
+    except Exception as e:
+        print(f"[描述获取] 获取 {index_name}({index_code}) 信息失败: {e}")
+        return None
+
+
+def auto_fetch_missing_descriptions(config_file: str, zs_all: Dict, force_online: bool = False) -> Dict[str, str]:
+    """
+    自动获取缺失的板块描述
+    
+    优先级：1.预定义描述 2.联网获取 3.默认生成
+    
+    Args:
+        config_file: 配置文件路径
+        zs_all: 板块配置字典
+        force_online: 是否强制联网获取（即使已有预定义描述）
+        
+    Returns:
+        更新后的描述字典
+    """
+    # 加载现有描述
+    existing_descriptions = load_descriptions_from_config(config_file)
+    descriptions = existing_descriptions.copy()
+    
+    # 找出缺失描述的板块
+    missing_codes = []
+    for code in zs_all:
+        if code not in descriptions or not descriptions[code]:
+            missing_codes.append(code)
+    
+    if not missing_codes:
+        print(f"[描述自动获取] 所有板块 ({len(zs_all)}个) 都已有描述，无需获取")
+        return descriptions
+    
+    print(f"[描述自动获取] 发现 {len(missing_codes)}/{len(zs_all)} 个板块缺失描述，开始获取...")
+    
+    success_count = 0
+    fail_count = 0
+    
+    for index_code in missing_codes:
+        info = zs_all[index_code]
+        index_name = info[0] if isinstance(info, list) else str(info)
+        
+        description = None
+        
+        # 1. 尝试使用预定义描述
+        if not force_online:
+            description = get_predefined_description(index_code)
+            if description:
+                print(f"[描述自动获取] {index_name}({index_code}) - 使用预定义描述")
+        
+        # 2. 尝试联网获取（如果启用且预定义未获取到）
+        if not description and ENABLE_ONLINE_FETCH:
+            try:
+                print(f"[描述自动获取] {index_name}({index_code}) - 正在联网获取...")
+                description = get_index_description_from_eastmoney(index_code, index_name)
+                if description:
+                    print(f"[描述自动获取] {index_name}({index_code}) - 联网获取成功")
+                else:
+                    print(f"[描述自动获取] {index_name}({index_code}) - 联网获取失败，尝试获取详细信息...")
+                    # 尝试获取更详细的信息
+                    info_data = fetch_index_info_from_eastmoney(index_code, index_name)
+                    if info_data:
+                        description = f"{index_name}是{info_data.get('name', '指数')}，反映相关板块的整体表现。"
+                        print(f"[描述自动获取] {index_name}({index_code}) - 通过详细信息获取成功")
+            except Exception as e:
+                print(f"[描述自动获取] {index_name}({index_code}) - 联网获取异常: {e}")
+        
+        # 3. 生成默认描述
+        if not description:
+            description = generate_default_description(index_code, index_name)
+            print(f"[描述自动获取] {index_name}({index_code}) - 使用默认描述")
+        
+        # 保存描述
+        if description:
+            descriptions[index_code] = description
+            success_count += 1
+        else:
+            fail_count += 1
+        
+        # 添加延迟，避免请求过快
+        if ENABLE_ONLINE_FETCH:
+            time.sleep(0.3)
+    
+    # 保存到配置文件
+    if success_count > 0:
+        save_descriptions_to_config(config_file, descriptions)
+        print(f"[描述自动获取] 完成！成功: {success_count}, 失败: {fail_count}")
+    
+    return descriptions
 
 
 def get_index_description_from_local(index_code: str, descriptions: Dict[str, str]) -> str:

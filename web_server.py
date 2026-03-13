@@ -12,7 +12,12 @@ from database.FundDatabase import FundDatabase
 from scripts.txt2str import file2json
 from utils.Logger import Logger
 from utils.errors import api_endpoint, success_response, error_response, NotFoundError, APIError, ValidationError
-from utils.IndexDescription import initialize_descriptions, load_descriptions_from_config, save_descriptions_to_config
+from utils.IndexDescription import (
+    initialize_descriptions, 
+    load_descriptions_from_config, 
+    save_descriptions_to_config,
+    auto_fetch_missing_descriptions
+)
 from datetime import datetime
 import json
 import os
@@ -37,7 +42,7 @@ fund_api = FundValuationAPI(db_path=DB_FILE)
 
 
 def ensure_descriptions_initialized():
-    """确保板块描述已初始化"""
+    """确保板块描述已初始化，自动获取缺失的描述"""
     try:
         # 加载现有配置
         ui_config = file2json(UI_CONFIG_FILE) if os.path.exists(UI_CONFIG_FILE) else {}
@@ -50,21 +55,38 @@ def ensure_descriptions_initialized():
         existing_desc = ui_config.get('zs_descriptions', {})
         
         # 检查是否需要初始化（首次运行或新增板块）
-        need_init = False
+        missing_count = 0
         for code in zs_all:
             if code not in existing_desc or not existing_desc.get(code):
-                need_init = True
-                break
+                missing_count += 1
         
-        if need_init:
-            log.info("[描述初始化] 检测到需要初始化板块描述，正在处理...")
-            descriptions = initialize_descriptions(UI_CONFIG_FILE, zs_all)
+        if missing_count > 0:
+            log.info(f"[描述初始化] 检测到 {missing_count}/{len(zs_all)} 个板块缺少描述，自动获取中...")
+            # 使用自动获取功能（会优先使用预定义，然后联网，最后默认）
+            descriptions = auto_fetch_missing_descriptions(UI_CONFIG_FILE, zs_all)
             log.info(f"[描述初始化] 完成，共 {len(descriptions)} 个板块描述")
         else:
             log.info(f"[描述初始化] 所有板块描述已存在，共 {len(existing_desc)} 个")
             
     except Exception as e:
         log.error(f"[描述初始化] 初始化失败: {e}")
+
+
+def check_and_fetch_missing_descriptions():
+    """检查并获取新添加板块的描述"""
+    try:
+        # 加载现有配置
+        ui_config = file2json(UI_CONFIG_FILE) if os.path.exists(UI_CONFIG_FILE) else {}
+        zs_all = ui_config.get('zs_all', {})
+        
+        if not zs_all:
+            return
+        
+        # 自动获取缺失的描述
+        auto_fetch_missing_descriptions(UI_CONFIG_FILE, zs_all)
+            
+    except Exception as e:
+        log.error(f"[描述检查] 检查失败: {e}")
 
 
 # 启动时初始化板块描述
@@ -152,16 +174,20 @@ def get_config():
 @app.route('/api/config', methods=['POST'])
 @api_endpoint
 def save_config():
-    """保存配置信息（只保存UI配置）"""
+    """保存配置信息（只保存UI配置），自动获取新增板块的描述"""
     data = request.json
     
     # 加载现有配置以保留描述信息
     existing_config = file2json(UI_CONFIG_FILE) if os.path.exists(UI_CONFIG_FILE) else {}
     
+    # 新的板块配置
+    new_zs_all = data.get('zs_all', {})
+    existing_descriptions = existing_config.get('zs_descriptions', {})
+    
     # 只保存UI相关配置
     ui_config = {
-        'zs_all': data.get('zs_all', {}),
-        'zs_descriptions': existing_config.get('zs_descriptions', {}),  # 保留描述信息
+        'zs_all': new_zs_all,
+        'zs_descriptions': existing_descriptions,  # 保留描述信息
         'type_all': data.get('type_all', ['D', 'W', 'M']),
         'formula_all': data.get('formula_all', ['MACD']),
         'unitWidth': data.get('unitWidth', -5)
@@ -172,7 +198,19 @@ def save_config():
     
     log.info("UI配置保存成功")
     
-    return success_response(None, '配置保存成功')
+    # 检查是否有新增板块需要获取描述
+    # 在后台线程中执行，避免阻塞响应
+    import threading
+    def fetch_descriptions_async():
+        time.sleep(1)  # 延迟1秒，确保文件写入完成
+        try:
+            check_and_fetch_missing_descriptions()
+        except Exception as e:
+            log.error(f"[异步描述获取] 失败: {e}")
+    
+    threading.Thread(target=fetch_descriptions_async, daemon=True).start()
+    
+    return success_response(None, '配置保存成功，后台自动获取新增板块描述中')
 
 
 @app.route('/api/index/descriptions', methods=['GET'])
@@ -187,17 +225,81 @@ def get_index_descriptions():
 @app.route('/api/index/description/<index_code>', methods=['GET'])
 @api_endpoint
 def get_single_index_description(index_code):
-    """获取单个板块指数描述"""
+    """获取单个板块指数描述（如果不存在会自动获取）"""
     ui_config = file2json(UI_CONFIG_FILE) if os.path.exists(UI_CONFIG_FILE) else {}
+    zs_all = ui_config.get('zs_all', {})
     descriptions = ui_config.get('zs_descriptions', {})
     
-    if index_code in descriptions:
+    # 如果描述不存在，尝试自动获取
+    if index_code not in descriptions or not descriptions.get(index_code):
+        if index_code in zs_all:
+            log.info(f"[API] 板块 {index_code} 描述不存在，尝试自动获取...")
+            # 创建一个只包含该板块的字典
+            single_zs = {index_code: zs_all[index_code]}
+            new_descriptions = auto_fetch_missing_descriptions(UI_CONFIG_FILE, single_zs)
+            descriptions = new_descriptions
+    
+    if index_code in descriptions and descriptions[index_code]:
         return success_response({
             'code': index_code,
             'description': descriptions[index_code]
         })
     else:
         return error_response(NotFoundError('板块描述', index_code))
+
+
+@app.route('/api/index/description/<index_code>/fetch', methods=['POST'])
+@api_endpoint
+def fetch_single_index_description(index_code):
+    """手动触发获取单个板块指数描述（强制联网获取）"""
+    try:
+        ui_config = file2json(UI_CONFIG_FILE) if os.path.exists(UI_CONFIG_FILE) else {}
+        zs_all = ui_config.get('zs_all', {})
+        
+        if index_code not in zs_all:
+            return error_response(NotFoundError('板块', index_code))
+        
+        # 强制重新获取该板块的描述
+        from utils.IndexDescription import get_index_description_from_eastmoney, fetch_index_info_from_eastmoney, generate_default_description
+        
+        info = zs_all[index_code]
+        index_name = info[0] if isinstance(info, list) else str(info)
+        
+        log.info(f"[API] 手动获取板块 {index_name}({index_code}) 描述...")
+        
+        # 尝试联网获取
+        description = get_index_description_from_eastmoney(index_code, index_name)
+        
+        if not description:
+            # 尝试获取详细信息
+            info_data = fetch_index_info_from_eastmoney(index_code, index_name)
+            if info_data:
+                description = f"{index_name}是{info_data.get('name', '指数')}，反映相关板块的整体表现。"
+        
+        if not description:
+            # 使用默认描述
+            description = generate_default_description(index_code, index_name)
+        
+        # 保存到配置
+        if 'zs_descriptions' not in ui_config:
+            ui_config['zs_descriptions'] = {}
+        
+        ui_config['zs_descriptions'][index_code] = description
+        
+        with open(UI_CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(ui_config, f, ensure_ascii=False, indent=2)
+        
+        log.info(f"[API] 板块 {index_code} 描述获取成功")
+        return success_response({
+            'code': index_code,
+            'name': index_name,
+            'description': description,
+            'source': 'online' if '是' in description and '指数' in description else 'default'
+        }, '描述获取成功')
+        
+    except Exception as e:
+        log.error(f"[API] 获取描述失败: {e}")
+        return error_response(APIError(f'获取描述失败: {str(e)}', 500, 'FETCH_ERROR'))
 
 
 @app.route('/api/index/description/<index_code>', methods=['PUT'])
@@ -235,14 +337,23 @@ def refresh_index_descriptions():
         if not zs_all:
             return error_response(APIError('没有可刷新的板块数据', 400, 'NO_DATA'))
         
-        # 重新初始化描述
-        from utils.IndexDescription import initialize_descriptions
-        descriptions = initialize_descriptions(UI_CONFIG_FILE, zs_all)
+        # 检查是否有缺失的描述
+        existing_desc = ui_config.get('zs_descriptions', {})
+        missing_codes = [code for code in zs_all if code not in existing_desc or not existing_desc.get(code)]
         
-        return success_response({
-            'count': len(descriptions),
-            'descriptions': descriptions
-        }, '描述刷新成功')
+        if missing_codes:
+            # 自动获取缺失的描述
+            descriptions = auto_fetch_missing_descriptions(UI_CONFIG_FILE, zs_all)
+            return success_response({
+                'count': len(descriptions),
+                'missing_fetched': len(missing_codes),
+                'descriptions': descriptions
+            }, f'描述刷新成功，新增 {len(missing_codes)} 个板块描述')
+        else:
+            return success_response({
+                'count': len(existing_desc),
+                'descriptions': existing_desc
+            }, '所有板块描述已存在，无需刷新')
     except Exception as e:
         log.error(f"刷新描述失败: {e}")
         return error_response(APIError(f'刷新描述失败: {str(e)}', 500, 'REFRESH_ERROR'))

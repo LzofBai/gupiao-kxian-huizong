@@ -1,0 +1,2006 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 股票指数K线 & 基金估值监控系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+
+        .main-wrapper {
+            display: flex;
+            gap: 20px;
+            max-width: 1920px;
+            margin: 0 auto;
+        }
+
+        .container {
+            flex: 1;
+            min-width: 0;
+        }
+
+        /* 笔记面板样式 */
+        .notes-wrapper {
+            position: sticky;
+            top: 20px;
+            height: calc(100vh - 40px);
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .notes-panel {
+            width: 320px;
+            flex-shrink: 0;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            max-height: calc(100vh - 40px);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .notes-panel.collapsed {
+            width: 0;
+            min-width: 0;
+            opacity: 0;
+            transform: translateX(20px);
+            pointer-events: none;
+        }
+
+        .notes-toggle {
+            width: 36px;
+            height: 100px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 8px 0 0 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: -2px 2px 8px rgba(0,0,0,0.15);
+            transition: all 0.3s;
+            margin-top: 100px;
+            flex-shrink: 0;
+        }
+
+        .notes-toggle:hover {
+            width: 40px;
+            box-shadow: -3px 3px 12px rgba(0,0,0,0.2);
+        }
+
+        .notes-toggle .arrow {
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+            transition: transform 0.3s;
+        }
+
+        .notes-toggle.expanded .arrow {
+            transform: rotate(180deg);
+        }
+
+        .notes-toggle-tooltip {
+            position: absolute;
+            right: 50px;
+            background: #333;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .notes-toggle:hover .notes-toggle-tooltip {
+            opacity: 1;
+        }
+
+        .notes-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 12px 12px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .notes-header h3 {
+            margin: 0;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .notes-date {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .notes-toolbar {
+            padding: 10px 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
+
+        .notes-toolbar .toolbar-left {
+            display: flex;
+            gap: 8px;
+        }
+
+        .notes-toolbar .toolbar-right {
+            display: flex;
+            gap: 8px;
+        }
+
+        .notes-toolbar .btn-new {
+            background: #27ae60;
+            color: white;
+            border-color: #27ae60;
+        }
+
+        .notes-toolbar .btn-new:hover {
+            background: #219a52;
+        }
+
+        .notes-toolbar button {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: white;
+            color: #667eea;
+            border: 1px solid #667eea;
+        }
+
+        .notes-toolbar button:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .notes-toolbar button.active {
+            background: #667eea;
+            color: white;
+        }
+
+        /* 富文本编辑器工具栏 */
+        .format-toolbar {
+            padding: 8px 15px;
+            background: #fff;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .format-toolbar .toolbar-group {
+            display: flex;
+            gap: 4px;
+            padding: 0 8px;
+            border-right: 1px solid #e0e0e0;
+        }
+
+        .format-toolbar .toolbar-group:last-child {
+            border-right: none;
+        }
+
+        .format-toolbar button {
+            padding: 5px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: white;
+            color: #333;
+            min-width: 32px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .format-toolbar button:hover {
+            background: #f0f0f0;
+            border-color: #667eea;
+        }
+
+        .format-toolbar button.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .format-toolbar select {
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            background: white;
+            height: 28px;
+            min-width: 70px;
+        }
+
+        .format-toolbar select:hover {
+            border-color: #667eea;
+        }
+
+        .format-toolbar .color-picker {
+            width: 32px;
+            height: 28px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            padding: 2px;
+            background: white;
+        }
+
+        .format-toolbar .color-picker:hover {
+            border-color: #667eea;
+        }
+
+        /* 富文本编辑区域 */
+        .rich-editor {
+            width: 100%;
+            min-height: 400px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            outline: none;
+            overflow-y: auto;
+            background: white;
+        }
+
+        .rich-editor:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+        }
+
+        .rich-editor p {
+            margin: 0 0 10px 0;
+        }
+
+        .rich-editor p:last-child {
+            margin-bottom: 0;
+        }
+
+        .notes-content {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .notes-textarea {
+            width: 100%;
+            min-height: 400px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+            resize: vertical;
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            transition: border-color 0.3s;
+        }
+
+        .notes-textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+        }
+
+        .notes-status {
+            padding: 10px 15px;
+            background: #f8f9fa;
+            border-top: 1px solid #e0e0e0;
+            border-radius: 0 0 12px 12px;
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .notes-status .saved {
+            color: #27ae60;
+        }
+
+        .notes-status .unsaved {
+            color: #e74c3c;
+        }
+
+        .history-list {
+            max-height: 450px;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+
+        .history-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .history-list::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 3px;
+        }
+
+        .history-item {
+            padding: 12px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            border-radius: 8px;
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            transition: all 0.2s;
+        }
+
+        .history-item:hover {
+            background: #e9ecef;
+            border-color: #667eea;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+        }
+
+        .history-item.active {
+            background: #667eea;
+            border-color: #667eea;
+            color: white;
+        }
+
+        .history-item.active .history-date {
+            color: white;
+        }
+
+        .history-item.active .history-content {
+            color: rgba(255, 255, 255, 0.95);
+        }
+
+        .history-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .history-delete-btn {
+            width: 20px;
+            height: 20px;
+            border: none;
+            background: rgba(231, 76, 60, 0.1);
+            color: #e74c3c;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: all 0.2s;
+        }
+
+        .history-item:hover .history-delete-btn {
+            opacity: 1;
+        }
+
+        .history-delete-btn:hover {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .history-item.active .history-delete-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            opacity: 1;
+        }
+
+        .history-item.active .history-delete-btn:hover {
+            background: #e74c3c;
+        }
+
+        .history-date {
+            font-weight: bold;
+            font-size: 13px;
+            margin-bottom: 6px;
+            color: #667eea;
+        }
+
+        .history-content {
+            font-size: 12px;
+            line-height: 1.5;
+            color: #333;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+
+        .history-content::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .history-content::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 2px;
+        }
+
+        .history-empty {
+            color: #999;
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .notes-view {
+            display: none;
+        }
+
+        .notes-view.active {
+            display: block;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+
+        .update-time {
+            text-align: center;
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .auto-refresh {
+            text-align: center;
+            color: #27ae60;
+            margin-bottom: 30px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .section-title {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            margin: 30px 0 20px 0;
+            border-radius: 8px;
+            font-size: 20px;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .section-title .actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+            background: white;
+            color: #667eea;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+        }
+
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+
+        .btn-warning {
+            background: #f39c12;
+            color: white;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        table tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        td {
+            padding: 15px;
+            text-align: center;
+            border: 1px solid #e0e0e0;
+        }
+
+        .index-header {
+            background-color: rgb(47,117,181);
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .index-header a {
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .index-header a:hover {
+            text-decoration: underline;
+        }
+
+        /* 板块描述样式 */
+        .index-description {
+            background-color: #f8f9fa;
+            color: #555;
+            font-size: 13px;
+            line-height: 1.6;
+            padding: 10px 15px;
+            text-align: left;
+            border-left: 3px solid #667eea;
+        }
+
+        .index-description.empty {
+            color: #999;
+            font-style: italic;
+        }
+
+        img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+        }
+
+        /* 基金估值表格 */
+        .fund-table {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .fund-header {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            font-weight: bold;
+            padding: 12px;
+        }
+
+        .fund-row {
+            border-bottom: 1px solid #e0e0e0;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .fund-row:last-child {
+            border-bottom: none;
+        }
+
+        .fund-row:hover {
+            background: #f0f8ff;
+        }
+
+        .fund-name {
+            font-weight: bold;
+            color: #333;
+            text-align: left;
+            padding-left: 20px;
+        }
+
+        .fund-code {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .positive {
+            color: #f44336;
+            font-weight: bold;
+        }
+
+        .negative {
+            color: #4caf50;
+            font-weight: bold;
+        }
+
+        .neutral {
+            color: #666;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 弹窗样式 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            overflow-y: auto;
+        }
+
+        .modal-content {
+            background: white;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .modal-header h2 {
+            color: #667eea;
+            margin: 0;
+        }
+
+        .close {
+            font-size: 28px;
+            font-weight: bold;
+            color: #999;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .close:hover {
+            color: #333;
+        }
+
+        .holdings-editor {
+            margin-top: 20px;
+        }
+
+        .holding-row {
+            display: grid;
+            grid-template-columns: 2fr 2fr 1fr 80px;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+
+        .holding-row input {
+            padding: 8px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+        }
+
+        .message {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .warning-box {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-wrapper">
+    <div class="container">
+        <h1>📊 股票指数K线 & 基金估值监控系统</h1>
+        <div class="update-time">更新时间: {{ update_time }}</div>
+        <div class="auto-refresh">🔄 估值每5分钟自动刷新 | <a href="/admin" style="color:#667eea;">管理后台</a></div>
+
+        <!-- 基金估值部分 -->
+        {% if fund_list %}
+        <div class="section-title">
+            <span>💰 基金实时估值（基于前十大重仓股） <span id="fundRefreshInfo" style="font-size:12px;color:#999;font-weight:normal;"></span></span>
+            <div class="actions">
+                <button class="btn btn-success" onclick="refreshValuations()">🔄 手动刷新</button>
+                <button class="btn btn-warning" onclick="window.location.href='/admin'">⚙️ 管理</button>
+                <button class="btn" style="background:#e74c3c;color:white;" onclick="exitServer()">🚪 退出</button>
+            </div>
+        </div>
+        
+        <!-- 总持仓汇总信息 -->
+        <div id="positionSummary" style="background:white;padding:20px;margin-bottom:20px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);display:none;">
+            <div style="display:flex;justify-content:space-around;align-items:center;">
+                <div style="text-align:center;">
+                    <div style="font-size:14px;color:#666;margin-bottom:8px;">💵 总持仓金额</div>
+                    <div id="totalPosition" style="font-size:28px;font-weight:bold;color:#667eea;">0.00元</div>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:14px;color:#666;margin-bottom:8px;">📈 今日总盈亏</div>
+                    <div id="totalProfit" style="font-size:28px;font-weight:bold;">0.00元</div>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:14px;color:#666;margin-bottom:8px;">📊 盈亏比例</div>
+                    <div id="totalProfitRatio" style="font-size:28px;font-weight:bold;">0.00%</div>
+                </div>
+            </div>
+        </div>
+        <table class="fund-table">
+            <tr class="fund-header">
+                <td width="16%">基金名称</td>
+                <td width="8%">上次净值</td>
+                <td width="8%">估算净值</td>
+                <td width="8%">估算涨跌</td>
+                <td width="9%">持仓金额</td>
+                <td width="7%">持仓比例</td>
+                <td width="7%">重仓股占比</td>
+                <td width="9%">单日盈亏</td>
+                <td width="8%">估算时间</td>
+                <td width="20%">操作</td>
+            </tr>
+            <tbody id="fundValuationBody">
+                <tr>
+                    <td colspan="10">
+                        <div class="loading">
+                            <div class="loading-spinner"></div>
+                            <p>正在加载基金估值...</p>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        {% endif %}
+
+        <!-- K线图部分 -->
+        <div class="section-title">
+            <span>📈 股票指数K线图 <span id="klineRefreshInfo" style="font-size:12px;color:#999;font-weight:normal;"></span></span>
+        </div>
+        <table>
+            {% for str_zs, zs_info in dict_zs_all.items() %}
+            <tr class="index-header">
+                <td>*** <a href='https://quote.eastmoney.com/zz/{{ str_zs }}.html' target='_blank'>{{ str_zs }}</a> ***</td>
+                <td>{{ zs_info[0] }}</td>
+                <td>{{ ','.join(zs_info[1:]) }}</td>
+                {% for i in range((list_type|length * list_formula|length) - 3) %}
+                <td></td>
+                {% endfor %}
+            </tr>
+            <tr>
+                <td colspan="{{ list_type|length * list_formula|length }}" class="index-description {{ 'empty' if not zs_descriptions.get(str_zs) else '' }}">
+                    {{ zs_descriptions.get(str_zs, '暂无描述') }}
+                </td>
+            </tr>
+            <tr>
+                {% for str_type in list_type %}
+                    {% for str_formula in list_formula %}
+                        <td>
+                            <img src='http://webquoteklinepic.eastmoney.com/GetPic.aspx?nid={{ str_zs }}&type={{ str_type }}&unitWidth={{ int_unitWidth }}&ef=&formula={{ str_formula }}&AT=1&imageType=KXL&timespan={{ (update_time|replace('-', '')|replace(':', '')|replace(' ', '')) }}' 
+                                 alt="{{ str_type }}{{ ','.join(zs_info) }}{{ str_formula }}"/>
+                        </td>
+                    {% endfor %}
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <!-- 笔记面板 -->
+    <div class="notes-wrapper">
+        <div class="notes-panel" id="notesPanel">
+            <div class="notes-header">
+                <h3>📝 每日看盘笔记</h3>
+                <span class="notes-date" id="notesDate"></span>
+            </div>
+        <div class="notes-toolbar">
+            <div class="toolbar-left">
+                <button onclick="switchNotesView('edit')" id="btnEdit" class="active">编辑</button>
+                <button onclick="switchNotesView('history')" id="btnHistory">历史</button>
+            </div>
+            <div class="toolbar-right">
+                <button onclick="NotesManager.createNewNote()" class="btn-new" title="创建新笔记">➕ 新建笔记</button>
+            </div>
+        </div>
+        <!-- 格式化工具栏 -->
+        <div class="format-toolbar" id="formatToolbar">
+            <div class="toolbar-group">
+                <button onclick="formatDoc('bold')" title="粗体"><b>B</b></button>
+                <button onclick="formatDoc('italic')" title="斜体"><i>I</i></button>
+                <button onclick="formatDoc('underline')" title="下划线"><u>U</u></button>
+                <button onclick="formatDoc('strikeThrough')" title="删除线"><s>S</s></button>
+            </div>
+            <div class="toolbar-group">
+                <select onchange="formatDoc('fontSize', this.value); this.value=''" title="字号">
+                    <option value="">字号</option>
+                    <option value="1">小</option>
+                    <option value="2">较小</option>
+                    <option value="3" selected>正常</option>
+                    <option value="4">较大</option>
+                    <option value="5">大</option>
+                    <option value="6">很大</option>
+                    <option value="7">极大</option>
+                </select>
+                <select onchange="formatDoc('formatBlock', this.value); this.value=''" title="格式">
+                    <option value="">格式</option>
+                    <option value="P">段落</option>
+                    <option value="H1">标题1</option>
+                    <option value="H2">标题2</option>
+                    <option value="H3">标题3</option>
+                    <option value="BLOCKQUOTE">引用</option>
+                </select>
+            </div>
+            <div class="toolbar-group">
+                <input type="color" class="color-picker" onchange="formatDoc('foreColor', this.value)" title="文字颜色">
+                <input type="color" class="color-picker" onchange="formatDoc('hiliteColor', this.value)" title="背景颜色" value="#ffffff">
+            </div>
+            <div class="toolbar-group">
+                <button onclick="formatDoc('justifyLeft')" title="左对齐">←</button>
+                <button onclick="formatDoc('justifyCenter')" title="居中">↔</button>
+                <button onclick="formatDoc('justifyRight')" title="右对齐">→</button>
+            </div>
+            <div class="toolbar-group">
+                <button onclick="formatDoc('insertUnorderedList')" title="无序列表">☰</button>
+                <button onclick="formatDoc('insertOrderedList')" title="有序列表">1.</button>
+                <button onclick="formatDoc('removeFormat')" title="清除格式">✕</button>
+            </div>
+            <div class="toolbar-group">
+                <button onclick="insertDateTime()" title="插入日期时间">📅 时间</button>
+            </div>
+        </div>
+        <div class="notes-content">
+            <!-- 编辑视图 -->
+            <div id="editView" class="notes-view active">
+                <div 
+                    id="dailyNotes" 
+                    class="rich-editor" 
+                    contenteditable="true"
+                    placeholder="记录今日看盘心得...
+
+您可以记录：
+• 市场整体感受
+• 重点关注的基金/指数
+• 交易计划或反思
+• 其他重要信息
+
+选中文字后可使用上方工具栏设置格式
+笔记将自动保存到本地"></div>
+            </div>
+            <!-- 历史视图 -->
+            <div id="historyView" class="notes-view">
+                <div id="historyList" class="history-list">
+                    <p style="color:#999;text-align:center;padding:20px;">暂无历史记录</p>
+                </div>
+            </div>
+        </div>
+        <div class="notes-status">
+            <span id="notesStatus">准备就绪</span>
+            <span id="notesWordCount">字数: 0</span>
+        </div>
+        </div>
+        <button class="notes-toggle" id="notesToggle" onclick="toggleNotesPanel()">
+            <span class="arrow">◀</span>
+            <span class="notes-toggle-tooltip" id="toggleTooltip">隐藏笔记</span>
+        </button>
+    </div>
+    </div>
+
+    <!-- 持仓查看/编辑弹窗 -->
+    <div id="holdingsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">📋 持仓信息</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            
+            <div id="holdingsContent"></div>
+            <div class="message" id="holdingsMessage"></div>
+        </div>
+    </div>
+
+    <script>
+        let autoRefreshTimer = null;
+        let currentFundCode = null;
+
+        // 性能监控函数
+        const PerformanceMonitor = {
+            // 记录基金刷新时间
+            logFundRefreshTime: function(startTime, fundCount) {
+                const duration = (Date.now() - startTime) / 1000;
+                const avgTime = fundCount > 0 ? (duration / fundCount).toFixed(2) : 0;
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString('zh-CN', {hour12: false});
+                
+                // 控制台输出
+                console.log(`✅ 基金估值刷新完成`);
+                console.log(`   总耗时: ${duration.toFixed(2)}秒`);
+                console.log(`   基金数量: ${fundCount}个`);
+                console.log(`   平均耗时: ${avgTime}秒/基金`);
+                
+                // 界面显示
+                const infoEl = document.getElementById('fundRefreshInfo');
+                if (infoEl) {
+                    infoEl.innerHTML = `[刷新于 ${timeStr}，耗时 ${duration.toFixed(1)}秒]`;
+                    infoEl.style.color = '#27ae60';  // 绿色表示成功
+                }
+                
+                return duration;
+            },
+            
+            // 记录K线图刷新时间
+            logKLineRefreshTime: function(startTime, imageCount) {
+                const duration = (Date.now() - startTime) / 1000;
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString('zh-CN', {hour12: false});
+                
+                // 控制台输出
+                console.log(`✅ K线图刷新完成`);
+                console.log(`   总耗时: ${duration.toFixed(2)}秒`);
+                console.log(`   图片数量: ${imageCount}张`);
+                
+                // 界面显示
+                const infoEl = document.getElementById('klineRefreshInfo');
+                if (infoEl) {
+                    infoEl.innerHTML = `[加载于 ${timeStr}，${imageCount}张图片，耗时 ${duration.toFixed(1)}秒]`;
+                    infoEl.style.color = '#27ae60';  // 绿色表示成功
+                }
+                
+                return duration;
+            },
+            
+            // 记录页面总加载时间
+            logPageLoadTime: function(startTime) {
+                const duration = (Date.now() - startTime) / 1000;
+                console.log(`🚀 页面总加载时间: ${duration.toFixed(2)}秒`);
+                return duration;
+            }
+        };
+
+        // 页面加载时启动
+        window.onload = function() {
+            // 记录页面加载开始时间
+            const pageLoadStart = Date.now();
+            
+            // 检查是否需要刷新（基金管理页面修改了基金列表）
+            const needRefresh = localStorage.getItem('fundListChanged');
+            if (needRefresh === 'true') {
+                console.log('检测到基金列表变化，重新加载页面...');
+                localStorage.removeItem('fundListChanged');  // 先清除标记，再刷新
+                window.location.reload();  // 重新加载页面以获取最新基金列表
+                return;
+            }
+            
+            // 加载基金估值
+            loadFundValuations();
+            startAutoRefresh();
+            
+            // 监控K线图加载
+            monitorKLineImages(pageLoadStart);
+        };
+
+        // 自动刷新（5分钟）
+        function startAutoRefresh() {
+            autoRefreshTimer = setInterval(() => {
+                loadFundValuations();
+            }, 300000); // 300秒 = 5分钟
+        }
+
+        // 停止自动刷新
+        function stopAutoRefresh() {
+            if (autoRefreshTimer) {
+                clearInterval(autoRefreshTimer);
+                autoRefreshTimer = null;
+            }
+        }
+
+        // 监控K线图加载
+        function monitorKLineImages(pageLoadStart) {
+            const klineStartTime = Date.now();
+            const images = document.querySelectorAll('img[src*="webquoteklinepic.eastmoney.com"]');
+            const imageCount = images.length;
+            
+            if (imageCount === 0) {
+                console.log('⚠️ 未找到K线图片');
+                return;
+            }
+            
+            console.log(`🔄 开始加载K线图... (共${imageCount}张图片)`);
+            
+            let loadedCount = 0;
+            let errorCount = 0;
+            
+            images.forEach((img, index) => {
+                // 如果图片已经加载
+                if (img.complete) {
+                    loadedCount++;
+                    if (loadedCount + errorCount === imageCount) {
+                        finishMonitoring();
+                    }
+                } else {
+                    // 监听加载事件
+                    img.addEventListener('load', function() {
+                        loadedCount++;
+                        if (loadedCount + errorCount === imageCount) {
+                            finishMonitoring();
+                        }
+                    });
+                    
+                    img.addEventListener('error', function() {
+                        errorCount++;
+                        console.warn(`⚠️ K线图加载失败: 第${index + 1}张`);
+                        if (loadedCount + errorCount === imageCount) {
+                            finishMonitoring();
+                        }
+                    });
+                }
+            });
+            
+            function finishMonitoring() {
+                PerformanceMonitor.logKLineRefreshTime(klineStartTime, imageCount);
+                if (errorCount > 0) {
+                    console.warn(`⚠️ 有${errorCount}张K线图加载失败`);
+                }
+                PerformanceMonitor.logPageLoadTime(pageLoadStart);
+            }
+        }
+
+        // 手动刷新
+        function refreshValuations() {
+            stopAutoRefresh();
+            loadFundValuations();
+            startAutoRefresh();
+        }
+
+        // 退出服务器
+        async function exitServer() {
+            if (!confirm('确定要退出服务器吗？\n\n这将终止程序运行，关闭后将无法再访问监控页面。')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/exit', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('服务器已关闭，窗口即将关闭');
+                    // 尝试关闭浏览器窗口
+                    window.open('', '_self').close();
+                    // 如果无法关闭，显示提示
+                    document.body.innerHTML = '<div style="text-align:center;padding:50px;font-size:20px;"><h1>🛑 服务器已关闭</h1><p>您可以安全地关闭此页面了</p></div>';
+                } else {
+                    alert('退出失败: ' + (data.error || '未知错误'));
+                }
+            } catch (error) {
+                // 如果请求失败，可能是服务器已经关闭
+                alert('服务器已关闭或无法访问');
+                window.open('', '_self').close();
+            }
+        }
+
+        // 加载基金估值
+        async function loadFundValuations() {
+            const fundCodes = {{ fund_list|tojson }};
+            if (fundCodes.length === 0) return;
+        
+            // 开始计时
+            const startTime = Date.now();
+            console.log(`🔄 开始刷新基金估值数据... (共${fundCodes.length}个基金)`);
+        
+            // 显示加载状态
+            document.getElementById('fundValuationBody').innerHTML = `
+                <tr>
+                    <td colspan="10">
+                        <div class="loading">
+                            <div class="loading-spinner"></div>
+                            <p>正在获取实时估值数据，请稍候...</p>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        
+            try {
+                const response = await fetch('/api/fund/valuation/batch', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({fund_codes: fundCodes})
+                });
+                const data = await response.json();
+                        
+                if (data.success) {
+                    displayValuations(data.data.results);
+                    updatePositionSummary(data.data.results, data.data.total_position);
+                    // 记录性能
+                    PerformanceMonitor.logFundRefreshTime(startTime, fundCodes.length);
+                } else {
+                    // 处理错误对象，提取错误消息
+                    let errorMsg = '未知错误';
+                    if (typeof data.error === 'object' && data.error !== null) {
+                        errorMsg = data.error.message || JSON.stringify(data.error);
+                    } else if (typeof data.error === 'string') {
+                        errorMsg = data.error;
+                    }
+                    document.getElementById('fundValuationBody').innerHTML = 
+                        '<tr><td colspan="10" style="color:#e74c3c;">加载失败: ' + errorMsg + '<br><button class="btn btn-success" onclick="loadFundValuations()" style="margin-top:10px;">🔄 重新加载</button></td></tr>';
+                }
+            } catch (error) {
+                document.getElementById('fundValuationBody').innerHTML = 
+                    '<tr><td colspan="10" style="color:#e74c3c;">加载失败: ' + error.message + '<br><button class="btn btn-success" onclick="loadFundValuations()" style="margin-top:10px;">🔄 重新加载</button></td></tr>';
+            }
+        }
+
+        // 显示估值数据
+        function displayValuations(valuations) {
+            const tbody = document.getElementById('fundValuationBody');
+            const fundCodes = {{ fund_list|tojson }};
+            
+            let html = '';
+            fundCodes.forEach(code => {
+                if (valuations[code]) {
+                    const v = valuations[code];
+                    
+                    // 检查是否为失败的估值（估算净值为"/"）
+                    const isFailed = v.估算净值 === '/' || v.估算涨跌幅 === '/';
+                    
+                    if (isFailed) {
+                        // 估值失败的情况
+                        html += `
+                            <tr class="fund-row">
+                                <td class="fund-name">
+                                    ${v.基金名称 || code}<br>
+                                    <span class="fund-code">${code}</span>
+                                </td>
+                                <td>${v.上次净值 ? v.上次净值.toFixed(4) : '-'}<br><span style="font-size:12px;color:#999;">${v.净值日期 || ''}</span></td>
+                                <td style="font-size:16px;font-weight:bold;color:#999;">/</td>
+                                <td style="font-size:16px;color:#999;">/</td>
+                                <td onclick="event.stopPropagation(); editPosition('${code}', '${v.基金名称 || code}', ${v.持仓金额 || 0})" style="cursor:pointer;text-decoration:underline;color:#667eea;font-weight:bold;">
+                                    ${(v.持仓金额 || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}元
+                                </td>
+                                <td style="font-size:14px;">${(v.持仓比例 || 0).toFixed(2)}%</td>
+                                <td style="font-size:14px;color:#999;">/</td>
+                                <td style="font-size:16px;color:#999;">/</td>
+                                <td style="font-size:12px;color:#999;">获取失败</td>
+                                <td>
+                                    <button class="btn btn-success btn-small" onclick="event.stopPropagation(); showHoldings('${code}', '${v.基金名称 || code}', ${v.持仓比例合计 || 0})">查看持仓</button>
+                                    <button class="btn btn-warning btn-small" onclick="event.stopPropagation(); editHoldings('${code}', '${v.基金名称 || code}')">编辑持仓</button>
+                                </td>
+                            </tr>
+                        `;
+                    } else {
+                        // 正常估值的情况
+                        const changeClass = v.估算涨跌幅 > 0 ? 'positive' : (v.估算涨跌幅 < 0 ? 'negative' : 'neutral');
+                        const changeSign = v.估算涨跌幅 > 0 ? '+' : '';
+                        const profitClass = v.单日盈亏 > 0 ? 'positive' : (v.单日盈亏 < 0 ? 'negative' : 'neutral');
+                        const profitSign = v.单日盈亏 > 0 ? '+' : '';
+                        
+                        // 判断重仓股占比是否低于50%
+                        const holdingRatio = v.持仓比例合计 || 0;
+                        const holdingRatioClass = holdingRatio < 50 ? 'negative' : '';  // 低于50%时标红
+                        
+                        html += `
+                            <tr class="fund-row" onclick="showHoldings('${code}', '${v.基金名称}', ${v.持仓比例合计 || 0})">
+                                <td class="fund-name">
+                                    ${v.基金名称}<br>
+                                    <span class="fund-code">${code}</span>
+                                </td>
+                                <td>${v.上次净值.toFixed(4)}<br><span style="font-size:12px;color:#999;">${v.净值日期}</span></td>
+                                <td style="font-size:16px;font-weight:bold;">${v.估算净值.toFixed(4)}</td>
+                                <td class="${changeClass}" style="font-size:16px;">${changeSign}${v.估算涨跌幅.toFixed(2)}%</td>
+                                <td onclick="event.stopPropagation(); editPosition('${code}', '${v.基金名称}', ${v.持仓金额})" style="cursor:pointer;text-decoration:underline;color:#667eea;font-weight:bold;">
+                                    ${v.持仓金额.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}元
+                                </td>
+                                <td style="font-size:14px;">${v.持仓比例.toFixed(2)}%</td>
+                                <td class="${holdingRatioClass}" style="font-size:14px;font-weight:bold;">${holdingRatio.toFixed(2)}%</td>
+                                <td class="${profitClass}" style="font-size:16px;font-weight:bold;">
+                                    ${profitSign}${v.单日盈亏.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}元
+                                </td>
+                                <td style="font-size:12px;">${v.估算时间.split(' ')[1]}</td>
+                                <td>
+                                    <button class="btn btn-success btn-small" onclick="event.stopPropagation(); showHoldings('${code}', '${v.基金名称}', ${v.持仓比例合计 || 0})">查看持仓</button>
+                                    <button class="btn btn-warning btn-small" onclick="event.stopPropagation(); editHoldings('${code}', '${v.基金名称}')">编辑持仓</button>
+                                </td>
+                            </tr>
+                        `;
+                    }
+                } else {
+                    html += `
+                        <tr class="fund-row">
+                            <td class="fund-name">${code}</td>
+                            <td colspan="9" style="color:#999;">估值计算失败</td>
+                        </tr>
+                    `;
+                }
+            });
+            
+            tbody.innerHTML = html;
+        }
+
+        // 更新持仓汇总信息
+        function updatePositionSummary(valuations, totalPosition) {
+            let totalProfit = 0;
+            
+            // 计算总盈亏
+            for (const code in valuations) {
+                totalProfit += valuations[code].单日盈亏 || 0;
+            }
+            
+            // 计算盈亏比例
+            const profitRatio = totalPosition > 0 ? (totalProfit / totalPosition * 100) : 0;
+            
+            // 更新显示
+            document.getElementById('totalPosition').textContent = 
+                totalPosition.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '元';
+            
+            const profitEl = document.getElementById('totalProfit');
+            const profitSign = totalProfit > 0 ? '+' : '';
+            profitEl.textContent = profitSign + totalProfit.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '元';
+            profitEl.style.color = totalProfit > 0 ? '#f44336' : (totalProfit < 0 ? '#4caf50' : '#666');
+            
+            const ratioEl = document.getElementById('totalProfitRatio');
+            const ratioSign = profitRatio > 0 ? '+' : '';
+            ratioEl.textContent = ratioSign + profitRatio.toFixed(2) + '%';
+            ratioEl.style.color = profitRatio > 0 ? '#f44336' : (profitRatio < 0 ? '#4caf50' : '#666');
+            
+            // 显示汇总框
+            document.getElementById('positionSummary').style.display = 'block';
+        }
+
+        // 查看持仓
+        async function showHoldings(fundCode, fundName, totalRatioFromValuation = 0) {
+            currentFundCode = fundCode;
+            const ratioHint = totalRatioFromValuation > 0 ? ` [前十大重仓股累计: ${totalRatioFromValuation.toFixed(2)}%]` : '';
+            document.getElementById('modalTitle').textContent = `📋 ${fundName} (${fundCode}) - 持仓信息${ratioHint}`;
+            document.getElementById('holdingsModal').style.display = 'block';
+            document.getElementById('holdingsContent').innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>正在加载持仓...</p></div>';
+
+            try {
+                const response = await fetch(`/api/fund/holdings/${fundCode}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const holdings = data.data.holdings;  // 修复：从 data.data.holdings 获取持仓数组
+                    const total = data.total_ratio || holdings.reduce((sum, h) => sum + h.持仓比例, 0);
+                    
+                    let warningHtml = '';
+                    if (data.warning) {
+                        warningHtml = `<div class="warning-box">⚠️ ${data.warning}</div>`;
+                    }
+                    
+                    document.getElementById('holdingsContent').innerHTML = warningHtml + `
+                        <h3>持仓信息 (总计: ${total.toFixed(2)}%)</h3>
+                        <table style="margin-top:15px;">
+                            <thead>
+                                <tr style="background:#f8f9fa;">
+                                    <th>排名</th>
+                                    <th>股票代码</th>
+                                    <th>股票名称</th>
+                                    <th>持仓比例</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${holdings.map((h, i) => `
+                                    <tr>
+                                        <td>${i + 1}</td>
+                                        <td>${h.股票代码}</td>
+                                        <td>${h.股票名称}</td>
+                                        <td>${h.持仓比例.toFixed(2)}%</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                        <div style="margin-top:20px;display:flex;gap:10px;">
+                            <button class="btn btn-success" onclick="refreshHoldings('${fundCode}', '${fundName}')" style="flex:1;">🔄 联网更新</button>
+                            <button class="btn btn-warning" onclick="editHoldings('${fundCode}', '${fundName}')" style="flex:1;">✏️ 编辑持仓</button>
+                        </div>
+                    `;
+                } else {
+                    showMessage('holdingsMessage', data.error, false);
+                }
+            } catch (error) {
+                showMessage('holdingsMessage', '加载失败: ' + error.message, false);
+            }
+        }
+
+        // 刷新持仓（联网获取）
+        async function refreshHoldings(fundCode, fundName) {
+            document.getElementById('holdingsContent').innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>正在联网更新...</p></div>';
+
+            try {
+                const response = await fetch(`/api/fund/holdings/${fundCode}?force_update=true`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    showMessage('holdingsMessage', '更新成功！', true);
+                    setTimeout(() => {
+                        showHoldings(fundCode, fundName);
+                    }, 1000);
+                } else {
+                    showMessage('holdingsMessage', data.error, false);
+                }
+            } catch (error) {
+                showMessage('holdingsMessage', '更新失败: ' + error.message, false);
+            }
+        }
+
+        // 编辑持仓
+        async function editHoldings(fundCode, fundName) {
+            document.getElementById('modalTitle').textContent = `✏️ ${fundName} (${fundCode}) - 编辑持仓`;
+            document.getElementById('holdingsContent').innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>正在加载...</p></div>';
+
+            try {
+                const response = await fetch(`/api/fund/holdings/${fundCode}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const holdings = data.data.holdings;  // 修复：从 data.data.holdings 获取持仓数组
+                    document.getElementById('holdingsContent').innerHTML = `
+                        <div class="holdings-editor">
+                            <div class="holding-row" style="font-weight:bold;margin-bottom:15px;">
+                                <div>股票代码</div>
+                                <div>股票名称</div>
+                                <div>持仓比例(%)</div>
+                                <div></div>
+                            </div>
+                            ${holdings.map((h, i) => `
+                                <div class="holding-row" id="holding-${i}">
+                                    <input type="text" value="${h.股票代码}" data-field="股票代码">
+                                    <input type="text" value="${h.股票名称}" data-field="股票名称">
+                                    <input type="number" step="0.01" value="${h.持仓比例}" data-field="持仓比例">
+                                    <button class="btn btn-warning btn-small" onclick="removeHolding(${i})">删除</button>
+                                </div>
+                            `).join('')}
+                            <button class="btn btn-success" onclick="addHolding()" style="margin-top:10px;">➕ 添加持仓</button>
+                            <button class="btn" onclick="saveHoldings('${fundCode}', '${fundName}')" style="margin-top:10px;background:#667eea;color:white;">💾 保存修改</button>
+                        </div>
+                    `;
+                } else {
+                    showMessage('holdingsMessage', data.error, false);
+                }
+            } catch (error) {
+                showMessage('holdingsMessage', '加载失败: ' + error.message, false);
+            }
+        }
+
+        let holdingCounter = 0;
+        function addHolding() {
+            const container = document.querySelector('.holdings-editor');
+            const newRow = document.createElement('div');
+            newRow.className = 'holding-row';
+            newRow.id = `holding-new-${holdingCounter}`;
+            newRow.innerHTML = `
+                <input type="text" placeholder="股票代码" data-field="股票代码">
+                <input type="text" placeholder="股票名称" data-field="股票名称">
+                <input type="number" step="0.01" placeholder="0.00" data-field="持仓比例">
+                <button class="btn btn-warning btn-small" onclick="this.parentElement.remove()">删除</button>
+            `;
+            container.insertBefore(newRow, container.querySelector('.btn-success'));
+            holdingCounter++;
+        }
+
+        function removeHolding(index) {
+            document.getElementById(`holding-${index}`).remove();
+        }
+
+        // 编辑持仓金额
+        function editPosition(fundCode, fundName, currentPosition) {
+            const newPosition = prompt(`请输入 ${fundName} (${fundCode}) 的持仓金额（元）：`, currentPosition);
+            
+            if (newPosition === null) return; // 用户取消
+            
+            const amount = parseFloat(newPosition);
+            if (isNaN(amount) || amount < 0) {
+                alert('请输入有效的金额！');
+                return;
+            }
+            
+            // 停止自动刷新，避免与手动刷新冲突
+            stopAutoRefresh();
+            
+            // 发送请求更新持仓
+            fetch(`/api/fund/position/${fundCode}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({position_amount: amount})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // 延迟1秒后刷新，给服务器缓冲时间
+                    setTimeout(() => {
+                        loadFundValuations();
+                        // 重启自动刷新
+                        startAutoRefresh();
+                    }, 1000);
+                } else {
+                    alert('更新失败：' + data.error);
+                    startAutoRefresh(); // 失败也要重启刷新
+                }
+            })
+            .catch(error => {
+                alert('更新失败：' + error.message);
+                startAutoRefresh(); // 失败也要重启刷新
+            });
+        }
+
+        async function saveHoldings(fundCode, fundName) {
+            const rows = document.querySelectorAll('.holding-row[id^="holding-"]');
+            const holdings = [];
+            
+            rows.forEach(row => {
+                const inputs = row.querySelectorAll('input');
+                if (inputs[0].value) {
+                    holdings.push({
+                        股票代码: inputs[0].value,
+                        股票名称: inputs[1].value,
+                        持仓比例: parseFloat(inputs[2].value) || 0
+                    });
+                }
+            });
+
+            if (holdings.length === 0) {
+                showMessage('holdingsMessage', '至少保留一个持仓', false);
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/fund/holdings/${fundCode}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({holdings: holdings})
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showMessage('holdingsMessage', '保存成功！', true);
+                    setTimeout(() => {
+                        showHoldings(fundCode, fundName);
+                    }, 1000);
+                } else {
+                    showMessage('holdingsMessage', data.error, false);
+                }
+            } catch (error) {
+                showMessage('holdingsMessage', '保存失败: ' + error.message, false);
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('holdingsModal').style.display = 'none';
+        }
+
+        function showMessage(elementId, message, isSuccess) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.className = 'message ' + (isSuccess ? 'success' : 'error');
+            el.style.display = 'block';
+            setTimeout(() => {
+                el.style.display = 'none';
+            }, 3000);
+        }
+
+        // 点击弹窗外部关闭
+        window.onclick = function(event) {
+            if (event.target.id === 'holdingsModal') {
+                closeModal();
+            }
+        }
+
+        // 页面卸载时停止定时器
+        window.onbeforeunload = function() {
+            stopAutoRefresh();
+        }
+
+        // ========== 笔记功能 ==========
+        const NotesManager = {
+            currentNoteId: null,
+            autoSaveTimer: null,
+            notesIndexKey: 'fund_notes_index_v2', // 笔记索引key
+            
+            init: function() {
+                this.migrateOldData(); // 迁移旧数据
+                this.loadOrCreateTodayNote();
+                this.setupEventListeners();
+                this.updateHistoryList();
+            },
+            
+            // 迁移旧版数据到新格式
+            migrateOldData: function() {
+                const oldKeys = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith('fund_notes_') && !key.startsWith('fund_notes_index') && !key.startsWith('fund_notes_entry_')) {
+                        oldKeys.push(key);
+                    }
+                }
+                
+                if (oldKeys.length === 0) return;
+                
+                const index = this.getNotesIndex();
+                oldKeys.forEach(key => {
+                    const date = key.replace('fund_notes_', '');
+                    const content = localStorage.getItem(key);
+                    if (content && content.trim()) {
+                        const noteId = 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                        const note = {
+                            id: noteId,
+                            date: date,
+                            content: content,
+                            createTime: new Date(date).getTime(),
+                            updateTime: Date.now()
+                        };
+                        localStorage.setItem(`fund_notes_entry_${noteId}`, JSON.stringify(note));
+                        index.push(note);
+                    }
+                    localStorage.removeItem(key);
+                });
+                
+                this.saveNotesIndex(index);
+                console.log(`已迁移 ${oldKeys.length} 条旧笔记数据`);
+            },
+            
+            getNotesIndex: function() {
+                const indexStr = localStorage.getItem(this.notesIndexKey);
+                return indexStr ? JSON.parse(indexStr) : [];
+            },
+            
+            saveNotesIndex: function(index) {
+                localStorage.setItem(this.notesIndexKey, JSON.stringify(index));
+            },
+            
+            getTodayKey: function() {
+                const now = new Date();
+                return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            },
+            
+            formatDate: function(dateKey) {
+                const date = new Date(dateKey);
+                const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+                return `${dateKey} 周${weekDays[date.getDay()]}`;
+            },
+            
+            formatDateTime: function(timestamp) {
+                const date = new Date(timestamp);
+                return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+            },
+            
+            // 加载今天的笔记，如果没有则创建新笔记
+            loadOrCreateTodayNote: function() {
+                const today = this.getTodayKey();
+                const index = this.getNotesIndex();
+                
+                // 查找今天的笔记
+                const todayNotes = index.filter(n => n.date === today);
+                
+                if (todayNotes.length > 0) {
+                    // 加载最新的一条今天笔记
+                    const latestNote = todayNotes.sort((a, b) => b.updateTime - a.updateTime)[0];
+                    this.loadNoteById(latestNote.id);
+                } else {
+                    // 创建新笔记
+                    this.createNewNote();
+                }
+            },
+            
+            // 根据ID加载笔记
+            loadNoteById: function(noteId) {
+                const noteStr = localStorage.getItem(`fund_notes_entry_${noteId}`);
+                if (!noteStr) {
+                    this.createNewNote();
+                    return;
+                }
+                
+                const note = JSON.parse(noteStr);
+                this.currentNoteId = noteId;
+                
+                const editor = document.getElementById('dailyNotes');
+                editor.innerHTML = note.content || '<p><br></p>';
+                
+                // 更新标题显示
+                const index = this.getNotesIndex();
+                const sameDayNotes = index.filter(n => n.date === note.date);
+                const noteIndex = sameDayNotes.findIndex(n => n.id === noteId);
+                const noteNumber = sameDayNotes.length > 1 ? ` (第${noteIndex + 1}篇)` : '';
+                document.getElementById('notesDate').textContent = this.formatDate(note.date) + noteNumber;
+                
+                this.updateWordCount();
+                this.setStatus('已加载');
+            },
+            
+            // 创建新笔记
+            createNewNote: function() {
+                const today = this.getTodayKey();
+                const noteId = 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                
+                const note = {
+                    id: noteId,
+                    date: today,
+                    content: '<p><br></p>',
+                    createTime: Date.now(),
+                    updateTime: Date.now()
+                };
+                
+                // 保存笔记内容
+                localStorage.setItem(`fund_notes_entry_${noteId}`, JSON.stringify(note));
+                
+                // 更新索引
+                const index = this.getNotesIndex();
+                index.push(note);
+                this.saveNotesIndex(index);
+                
+                // 加载新笔记
+                this.currentNoteId = noteId;
+                const editor = document.getElementById('dailyNotes');
+                editor.innerHTML = '<p><br></p>';
+                editor.focus();
+                
+                // 更新显示
+                const sameDayNotes = index.filter(n => n.date === today);
+                const noteNumber = sameDayNotes.length > 1 ? ` (第${sameDayNotes.length}篇)` : '';
+                document.getElementById('notesDate').textContent = this.formatDate(today) + noteNumber;
+                
+                this.updateWordCount();
+                this.setStatus('新笔记', true);
+                this.updateHistoryList();
+                
+                // 切换到编辑视图
+                switchNotesView('edit');
+            },
+            
+            // 检查内容是否为空（去除HTML标签后是否有实际文本内容）
+            isContentEmpty: function(content) {
+                if (!content) return true;
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = content;
+                const text = tempDiv.textContent || tempDiv.innerText || '';
+                return text.trim().length === 0;
+            },
+            
+            saveNotes: function() {
+                if (!this.currentNoteId) return;
+                
+                const editor = document.getElementById('dailyNotes');
+                const content = editor.innerHTML;
+                
+                // 如果内容为空，删除该笔记而不是保存
+                if (this.isContentEmpty(content)) {
+                    this.deleteNote(this.currentNoteId, false);
+                    this.setStatus('内容为空，已删除', true);
+                    return;
+                }
+                
+                // 获取并更新笔记
+                const noteStr = localStorage.getItem(`fund_notes_entry_${this.currentNoteId}`);
+                if (noteStr) {
+                    const note = JSON.parse(noteStr);
+                    note.content = content;
+                    note.updateTime = Date.now();
+                    localStorage.setItem(`fund_notes_entry_${this.currentNoteId}`, JSON.stringify(note));
+                    
+                    // 更新索引
+                    const index = this.getNotesIndex();
+                    const indexItem = index.find(n => n.id === this.currentNoteId);
+                    if (indexItem) {
+                        indexItem.updateTime = Date.now();
+                        this.saveNotesIndex(index);
+                    }
+                }
+                
+                this.setStatus('已保存', true);
+                this.updateHistoryList();
+            },
+            
+            // 删除笔记
+            deleteNote: function(noteId, confirmDelete = true) {
+                if (confirmDelete && !confirm('确定要删除这篇笔记吗？此操作不可恢复。')) {
+                    return false;
+                }
+                
+                // 删除笔记内容
+                localStorage.removeItem(`fund_notes_entry_${noteId}`);
+                
+                // 从索引中移除
+                let index = this.getNotesIndex();
+                index = index.filter(n => n.id !== noteId);
+                this.saveNotesIndex(index);
+                
+                // 如果删除的是当前笔记，创建新笔记
+                if (noteId === this.currentNoteId) {
+                    this.currentNoteId = null;
+                    this.loadOrCreateTodayNote();
+                }
+                
+                this.updateHistoryList();
+                return true;
+            },
+            
+            autoSave: function() {
+                if (this.autoSaveTimer) {
+                    clearTimeout(this.autoSaveTimer);
+                }
+                this.setStatus('正在输入...', false, true);
+                this.autoSaveTimer = setTimeout(() => {
+                    this.saveNotes();
+                }, 1000);
+            },
+            
+            setStatus: function(text, saved = false, unsaved = false) {
+                const el = document.getElementById('notesStatus');
+                el.textContent = text;
+                el.className = saved ? 'saved' : (unsaved ? 'unsaved' : '');
+            },
+            
+            updateWordCount: function() {
+                const editor = document.getElementById('dailyNotes');
+                const textContent = editor.innerText || editor.textContent || '';
+                const count = textContent.length;
+                document.getElementById('notesWordCount').textContent = `字数: ${count}`;
+            },
+            
+            setupEventListeners: function() {
+                const editor = document.getElementById('dailyNotes');
+                
+                editor.addEventListener('input', () => {
+                    this.updateWordCount();
+                    this.autoSave();
+                });
+                
+                editor.addEventListener('keydown', (e) => {
+                    if (e.key === 'Tab') {
+                        e.preventDefault();
+                        document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
+                    }
+                });
+                
+                editor.addEventListener('paste', (e) => {
+                    e.preventDefault();
+                    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+                    document.execCommand('insertText', false, text);
+                });
+            },
+            
+            updateHistoryList: function() {
+                const index = this.getNotesIndex();
+                
+                if (index.length === 0) {
+                    document.getElementById('historyList').innerHTML = '<div class="history-empty">暂无历史记录</div>';
+                    return;
+                }
+                
+                // 按日期分组，每天内按时间倒序
+                const groupedByDate = {};
+                index.forEach(note => {
+                    if (!groupedByDate[note.date]) {
+                        groupedByDate[note.date] = [];
+                    }
+                    groupedByDate[note.date].push(note);
+                });
+                
+                // 每天内排序
+                Object.keys(groupedByDate).forEach(date => {
+                    groupedByDate[date].sort((a, b) => b.createTime - a.createTime);
+                });
+                
+                // 日期倒序
+                const sortedDates = Object.keys(groupedByDate).sort((a, b) => b.localeCompare(a));
+                
+                const listEl = document.getElementById('historyList');
+                listEl.innerHTML = sortedDates.map(date => {
+                    const dayNotes = groupedByDate[date];
+                    const isToday = date === this.getTodayKey();
+                    
+                    return dayNotes.map((note, idx) => {
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = note.content || '';
+                        let textContent = tempDiv.textContent || tempDiv.innerText || '';
+                        textContent = textContent.trim() || '（空笔记）';
+                        
+                        const isActive = note.id === this.currentNoteId;
+                        const noteLabel = dayNotes.length > 1 ? ` 第${idx + 1}篇` : '';
+                        const timeLabel = this.formatDateTime(note.createTime);
+                        
+                        return `
+                            <div class="history-item ${isActive ? 'active' : ''}">
+                                <div class="history-item-header">
+                                    <div class="history-date">${this.formatDate(date)}${noteLabel} <span style="font-size:11px;opacity:0.7;">${timeLabel}</span></div>
+                                    <button class="history-delete-btn" onclick="event.stopPropagation(); NotesManager.deleteNote('${note.id}')" title="删除笔记">✕</button>
+                                </div>
+                                <div class="history-content" onclick="NotesManager.loadNoteById('${note.id}')">${textContent}</div>
+                            </div>
+                        `;
+                    }).join('');
+                }).join('');
+            }
+        };
+
+        // 格式化功能
+        function formatDoc(cmd, value = null) {
+            document.execCommand(cmd, false, value);
+            document.getElementById('dailyNotes').focus();
+            updateToolbarState();
+        }
+
+        // 更新工具栏按钮状态
+        function updateToolbarState() {
+            const toolbar = document.getElementById('formatToolbar');
+            const buttons = toolbar.querySelectorAll('button');
+            
+            buttons.forEach(btn => {
+                const cmd = btn.getAttribute('onclick');
+                if (cmd && cmd.includes("formatDoc('")) {
+                    const match = cmd.match(/formatDoc\('([^']+)'/);
+                    if (match) {
+                        const command = match[1];
+                        if (document.queryCommandState(command)) {
+                            btn.classList.add('active');
+                        } else {
+                            btn.classList.remove('active');
+                        }
+                    }
+                }
+            });
+        }
+
+        // 插入日期时间
+        function insertDateTime() {
+            const now = new Date();
+            const dateStr = now.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            document.execCommand('insertText', false, `[${dateStr}] `);
+            document.getElementById('dailyNotes').focus();
+        }
+
+        // 监听选中变化以更新工具栏状态
+        document.addEventListener('selectionchange', function() {
+            const editor = document.getElementById('dailyNotes');
+            if (document.activeElement === editor) {
+                updateToolbarState();
+            }
+        });
+        
+        // 切换笔记视图
+        function switchNotesView(view) {
+            document.getElementById('editView').classList.toggle('active', view === 'edit');
+            document.getElementById('historyView').classList.toggle('active', view === 'history');
+            document.getElementById('btnEdit').classList.toggle('active', view === 'edit');
+            document.getElementById('btnHistory').classList.toggle('active', view === 'history');
+            
+            // 显示/隐藏格式化工具栏
+            toggleFormatToolbar(view === 'edit');
+            
+            if (view === 'history') {
+                NotesManager.updateHistoryList();
+            }
+        }
+        
+        // 初始化笔记管理器
+        NotesManager.init();
+
+        // 初始化笔记面板折叠状态
+        initNotesPanelState();
+
+        // 切换格式化工具栏显示
+        function toggleFormatToolbar(show) {
+            const toolbar = document.getElementById('formatToolbar');
+            if (show) {
+                toolbar.style.display = 'flex';
+            } else {
+                toolbar.style.display = 'none';
+            }
+        }
+
+        // 笔记面板折叠/展开功能
+        function toggleNotesPanel() {
+            const panel = document.getElementById('notesPanel');
+            const toggle = document.getElementById('notesToggle');
+            const tooltip = document.getElementById('toggleTooltip');
+            const isCollapsed = panel.classList.toggle('collapsed');
+            
+            toggle.classList.toggle('expanded', !isCollapsed);
+            tooltip.textContent = isCollapsed ? '显示笔记' : '隐藏笔记';
+            
+            // 保存状态到本地存储
+            localStorage.setItem('notes_panel_collapsed', isCollapsed ? 'true' : 'false');
+        }
+
+        // 初始化笔记面板状态（从本地存储读取）
+        function initNotesPanelState() {
+            const isCollapsed = localStorage.getItem('notes_panel_collapsed') === 'true';
+            const panel = document.getElementById('notesPanel');
+            const toggle = document.getElementById('notesToggle');
+            const tooltip = document.getElementById('toggleTooltip');
+            
+            if (isCollapsed) {
+                panel.classList.add('collapsed');
+                toggle.classList.remove('expanded');
+                tooltip.textContent = '显示笔记';
+            } else {
+                panel.classList.remove('collapsed');
+                toggle.classList.add('expanded');
+                tooltip.textContent = '隐藏笔记';
+            }
+        }
+    </script>
+</body>
+</html>

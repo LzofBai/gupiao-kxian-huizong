@@ -1,0 +1,22 @@
+{
+  "qq_groups": [
+    {
+      "name": "股票基金交流1群",
+      "number": "1067616502",
+      "link": "https://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=xxx",
+      "description": "基金投资交流，每日行情分析"
+    },
+    {
+      "name": "量化交易研究群",
+      "number": "1067616502", 
+      "link": "https://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=yyy",
+      "description": "量化策略分享，技术交流"
+    }
+  ],
+  "show_qq_groups": true,
+  "button_text": "👥 加群交流",
+  "button_style": {
+    "background": "#12B7F5",
+    "color": "white"
+  }
+}

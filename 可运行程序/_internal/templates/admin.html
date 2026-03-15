@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 基金估值与K线监控系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
+
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card p {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+        }
+
+        .btn-success:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(56, 239, 125, 0.4);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .btn-warning:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(245, 87, 108, 0.4);
+        }
+
+        .btn-info {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+
+        .btn-info:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0, 242, 254, 0.4);
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            overflow-y: auto;
+        }
+
+        .modal-content {
+            background: white;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .modal-header h2 {
+            color: #667eea;
+            margin: 0;
+        }
+
+        .close {
+            font-size: 28px;
+            font-weight: bold;
+            color: #999;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .close:hover {
+            color: #333;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: bold;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        table th, table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        table th {
+            background: #f8f9fa;
+            color: #333;
+            font-weight: bold;
+        }
+
+        table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .message {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .fund-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .fund-item:hover {
+            background: #f8f9fa;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+
+        .holdings-editor {
+            margin-top: 20px;
+        }
+
+        .holding-row {
+            display: grid;
+            grid-template-columns: 2fr 2fr 1fr 80px;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+
+        .holding-row input {
+            padding: 8px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+        }
+
+        .valuation-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .valuation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .fund-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .fund-code {
+            color: #999;
+            font-size: 14px;
+        }
+
+        .valuation-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .change-positive {
+            color: #e74c3c;
+        }
+
+        .change-negative {
+            color: #27ae60;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 页面标题 -->
+        <div class="header">
+            <h1>📊 基金估值与K线监控系统</h1>
+            <p>智能化基金管理 · 实时估值计算 · 可视化K线展示</p>
+        </div>
+
+        <!-- 功能卡片区 -->
+        <div class="dashboard">
+            <!-- 基金管理 -->
+            <div class="card">
+                <h2>💼 基金管理</h2>
+                <p>添加或移除监控基金，查看基金列表</p>
+                <button class="btn btn-primary" onclick="showFundManagement()">管理基金</button>
+            </div>
+
+            <!-- 持仓获取 -->
+            <div class="card">
+                <h2>📋 持仓获取</h2>
+                <p>获取基金前十大重仓股信息</p>
+                <button class="btn btn-success" onclick="showHoldingsManager()">获取持仓</button>
+            </div>
+
+            <!-- 持仓编辑 -->
+            <div class="card">
+                <h2>✏️ 持仓编辑</h2>
+                <p>手动编辑基金持仓比例</p>
+                <button class="btn btn-warning" onclick="showHoldingsEditor()">编辑持仓</button>
+            </div>
+
+            <!-- 估值计算 -->
+            <div class="card">
+                <h2>💰 估值计算</h2>
+                <p>实时计算基金估值涨跌</p>
+                <button class="btn btn-info" onclick="showValuation()">计算估值</button>
+            </div>
+
+            <!-- 生成监控页面 -->
+            <div class="card">
+                <h2>📈 监控页面</h2>
+                <p>生成包含K线和估值的综合监控页面</p>
+                <button class="btn btn-primary" onclick="generateMonitorPage()">生成页面</button>
+            </div>
+
+            <!-- 查看监控 -->
+            <div class="card">
+                <h2>👀 查看监控</h2>
+                <p>打开已生成的监控页面</p>
+                <button class="btn btn-success" onclick="viewMonitorPage()">查看页面</button>
+            </div>
+
+            <div class="card">
+                <h2>❓ 帮助</h2>
+                <p>查看项目文档和使用说明</p>
+                <button class="btn btn-info" onclick="openHelp()">打开帮助</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 基金管理弹窗 -->
+    <div id="fundManagementModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>💼 基金管理</h2>
+                <span class="close" onclick="closeModal('fundManagementModal')">&times;</span>
+            </div>
+            
+            <div class="input-group">
+                <label>添加新基金（自动验证并获取持仓）</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" 
+                           id="newFundCode" 
+                           placeholder="输入6位基金代码，如: 015752" 
+                           maxlength="6"
+                           pattern="\d{6}"
+                           style="flex: 1;"
+                           onkeypress="return event.charCode >= 48 && event.charCode <= 57">
+                    <button class="btn btn-primary" style="width: auto;" onclick="addFund()">➕ 添加</button>
+                </div>
+                <small style="color:#666;margin-top:5px;display:block;">
+                    ✓ 自动验证基金是否存在<br>
+                    ✓ 自动获取前十大重仓股票及比例<br>
+                    ✓ 自动初始化持仓金额为0
+                </small>
+            </div>
+
+            <div id="fundListContainer"></div>
+            <div class="message" id="fundManagementMessage"></div>
+        </div>
+    </div>
+
+    <!-- 持仓获取弹窗 -->
+    <div id="holdingsManagerModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📋 持仓获取</h2>
+                <span class="close" onclick="closeModal('holdingsManagerModal')">&times;</span>
+            </div>
+            
+            <div class="input-group">
+                <label>基金代码</label>
+                <input type="text" id="holdingsFundCode" placeholder="输入基金代码，如: 001593">
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-success" onclick="fetchHoldings(false)" style="flex: 1;">从配置读取</button>
+                <button class="btn btn-warning" onclick="fetchHoldings(true)" style="flex: 1;">联网更新</button>
+            </div>
+
+            <div class="loading" id="holdingsLoading">
+                <div class="loading-spinner"></div>
+                <p>正在获取持仓信息...</p>
+            </div>
+
+            <div id="holdingsResult"></div>
+            <div class="message" id="holdingsMessage"></div>
+        </div>
+    </div>
+
+    <!-- 持仓编辑弹窗 -->
+    <div id="holdingsEditorModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>✏️ 持仓编辑</h2>
+                <span class="close" onclick="closeModal('holdingsEditorModal')">&times;</span>
+            </div>
+            
+            <div class="input-group">
+                <label>基金代码</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="editorFundCode" placeholder="输入基金代码，如: 001593" style="flex: 1;">
+                    <button class="btn btn-info" style="width: auto;" onclick="loadHoldingsForEdit()">加载持仓</button>
+                </div>
+            </div>
+
+            <div id="holdingsEditorContent"></div>
+            <div class="message" id="editorMessage"></div>
+        </div>
+    </div>
+
+    <!-- 估值计算弹窗 -->
+    <div id="valuationModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>💰 估值计算</h2>
+                <span class="close" onclick="closeModal('valuationModal')">&times;</span>
+            </div>
+            
+            <button class="btn btn-primary" onclick="calculateAllValuations()" style="margin-bottom: 20px;">计算所有基金估值</button>
+
+            <div class="loading" id="valuationLoading">
+                <div class="loading-spinner"></div>
+                <p>正在计算估值...</p>
+            </div>
+
+            <div id="valuationResult"></div>
+            <div class="message" id="valuationMessage"></div>
+        </div>
+    </div>
+
+    <script>
+        // 显示弹窗
+        function showModal(modalId) {
+            document.getElementById(modalId).style.display = 'block';
+        }
+
+        // 关闭弹窗
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        // 显示消息
+        function showMessage(elementId, message, isSuccess) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.className = 'message ' + (isSuccess ? 'success' : 'error');
+            el.style.display = 'block';
+            setTimeout(() => {
+                el.style.display = 'none';
+            }, 5000);
+        }
+
+        // 基金管理
+        async function showFundManagement() {
+            showModal('fundManagementModal');
+            await loadFundList();
+        }
+
+        async function loadFundList() {
+            try {
+                const response = await fetch('/api/fund/list');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const container = document.getElementById('fundListContainer');
+                    if (data.data.length === 0) {
+                        container.innerHTML = '<p style="text-align:center;color:#999;">暂无基金</p>';
+                    } else {
+                        container.innerHTML = '<h3 style="margin-top:20px;">监控列表</h3>' +
+                            data.data.map(fund => `
+                                <div class="fund-item">
+                                    <div>
+                                        <strong>${fund.code}</strong>
+                                        ${fund.name ? `<span style="color:#666;"> - ${fund.name}</span>` : ''}
+                                        <br>
+                                        ${fund.has_holdings ? '<span style="color:#27ae60;">✓ 已有持仓</span>' : '<span style="color:#999;">未获取</span>'}
+                                        ${fund.update_time ? `<small style="color:#999;"> (${fund.update_time})</small>` : ''}
+                                    </div>
+                                    <div style="display:flex;gap:5px;">
+                                        <button class="btn btn-success btn-small" onclick="viewFundHoldings('${fund.code}', '${fund.name || fund.code}')">查看持仓</button>
+                                        <button class="btn btn-warning btn-small" onclick="removeFund('${fund.code}')">移除</button>
+                                    </div>
+                                </div>
+                            `).join('');
+                    }
+                }
+            } catch (error) {
+                showMessage('fundManagementMessage', '加载失败: ' + error.message, false);
+            }
+        }
+
+        async function addFund() {
+            const code = document.getElementById('newFundCode').value.trim();
+            
+            // 前端验证
+            if (!code) {
+                showMessage('fundManagementMessage', '请输入基金代码', false);
+                return;
+            }
+            
+            if (!/^\d{6}$/.test(code)) {
+                showMessage('fundManagementMessage', '基金代码必须为6位数字，请检查后重试', false);
+                return;
+            }
+
+            // 显示加载状态
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '正在验证并获取持仓...';
+            
+            showMessage('fundManagementMessage', `正在验证基金 ${code} 并自动获取持仓信息，请稍候...`, true);
+
+            try {
+                // 首先预览基金持仓（不直接添加）
+                const response = await fetch(`/api/fund/preview/${code}`);
+                
+                // 检查响应类型
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error('服务器返回了意外的响应格式，请稍后重试');
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // 显示预览对话框
+                    showFundPreview(data.data);
+                    document.getElementById('newFundCode').value = '';
+                } else {
+                    showMessage('fundManagementMessage', data.error || '操作失败', false);
+                }
+            } catch (error) {
+                console.error('添加基金错误:', error);
+                showMessage('fundManagementMessage', '操作失败: ' + error.message, false);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        // 显示基金预览对话框
+        function showFundPreview(fundData) {
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+            
+            const holdingsHtml = fundData.holdings && fundData.holdings.length > 0 
+                ? fundData.holdings.map((h, idx) => `
+                    <tr>
+                        <td style="padding:8px;border-bottom:1px solid #eee;text-align:center;">${idx + 1}</td>
+                        <td style="padding:8px;border-bottom:1px solid #eee;">${h.股票代码}</td>
+                        <td style="padding:8px;border-bottom:1px solid #eee;">${h.股票名称}</td>
+                        <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;color:#e74c3c;font-weight:bold;">${h.持仓比例}%</td>
+                    </tr>
+                `).join('')
+                : '<tr><td colspan="4" style="padding:20px;text-align:center;color:#999;">未能获取持仓信息</td></tr>';
+            
+            modal.innerHTML = `
+                <div style="background:white;border-radius:12px;padding:30px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,0.3);">
+                    <h2 style="color:#667eea;margin:0 0 20px 0;">📊 基金持仓预览</h2>
+                    <div style="background:#f8f9fa;padding:15px;border-radius:8px;margin-bottom:20px;">
+                        <p style="margin:5px 0;"><strong>基金代码:</strong> ${fundData.fund_code}</p>
+                        <p style="margin:5px 0;"><strong>基金名称:</strong> ${fundData.fund_name}</p>
+                        <p style="margin:5px 0;"><strong>重仓股票:</strong> ${fundData.holdings_count} 只</p>
+                        <p style="margin:5px 0;"><strong>前十大重仓股累计比例:</strong> <span style="color:#e74c3c;font-weight:bold;font-size:1.1em;">${fundData.total_ratio || 0}%</span></p>
+                    </div>
+                    <div style="margin-bottom:20px;">
+                        <h3 style="color:#333;margin:0 0 10px 0;">前十大重仓股:</h3>
+                        <table style="width:100%;border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#f0f0f0;">
+                                    <th style="padding:10px;text-align:center;">序号</th>
+                                    <th style="padding:10px;text-align:left;">股票代码</th>
+                                    <th style="padding:10px;text-align:left;">股票名称</th>
+                                    <th style="padding:10px;text-align:right;">持仓占比</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${holdingsHtml}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="display:flex;gap:10px;justify-content:flex-end;">
+                        <button onclick="this.closest('div[style*=fixed]').remove()" 
+                                style="padding:10px 20px;background:#95a5a6;color:white;border:none;border-radius:6px;cursor:pointer;">
+                            取消
+                        </button>
+                        <button onclick="confirmAddFund('${fundData.fund_code}', this.closest('div[style*=fixed]'))" 
+                                style="padding:10px 20px;background:#667eea;color:white;border:none;border-radius:6px;cursor:pointer;">
+                            确认添加
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+        
+        // 确认添加基金
+        async function confirmAddFund(fundCode, modalElement) {
+            try {
+                const response = await fetch('/api/fund/add', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({fund_code: fundCode})
+                });
+                
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error('服务器返回了意外的响应格式');
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showMessage('fundManagementMessage', data.message, true);
+                    modalElement.remove();
+                    await loadFundList();
+                    // 设置标记，通知主界面需要刷新
+                    localStorage.setItem('fundListChanged', 'true');
+                } else {
+                    alert(data.error || '添加失败');
+                }
+            } catch (error) {
+                alert('添加失败: ' + error.message);
+            }
+        }
+        
+        // 查看基金持仓
+        async function viewFundHoldings(fundCode, fundName) {
+            try {
+                const response = await fetch(`/api/fund/holdings/${fundCode}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    showFundPreview({
+                        fund_code: fundCode,
+                        fund_name: fundName,
+                        holdings: data.data.holdings,
+                        holdings_count: data.data.holdings.length
+                    });
+                } else {
+                    alert(data.error || '获取持仓失败');
+                }
+            } catch (error) {
+                alert('获取持仓失败: ' + error.message);
+            }
+        }
+
+
+        async function removeFund(code) {
+            if (!confirm(`确定要移除基金 ${code} 吗？`)) return;
+
+            try {
+                const response = await fetch(`/api/fund/remove/${code}`, {method: 'DELETE'});
+                const data = await response.json();
+                
+                if (data.success) {
+                    showMessage('fundManagementMessage', data.message, true);
+                    await loadFundList();
+                    // 设置标记，通知主界面需要刷新
+                    localStorage.setItem('fundListChanged', 'true');
+                } else {
+                    showMessage('fundManagementMessage', data.error, false);
+                }
+            } catch (error) {
+                showMessage('fundManagementMessage', '操作失败: ' + error.message, false);
+            }
+        }
+
+        // 持仓获取
+        function showHoldingsManager() {
+            showModal('holdingsManagerModal');
+        }
+
+        async function fetchHoldings(forceUpdate) {
+            const code = document.getElementById('holdingsFundCode').value.trim();
+            if (!code) {
+                showMessage('holdingsMessage', '请输入基金代码', false);
+                return;
+            }
+
+            document.getElementById('holdingsLoading').style.display = 'block';
+            document.getElementById('holdingsResult').innerHTML = '';
+
+            try {
+                const response = await fetch(`/api/fund/holdings/${code}?force_update=${forceUpdate}`);
+                const data = await response.json();
+                
+                document.getElementById('holdingsLoading').style.display = 'none';
+                
+                if (data.success) {
+                    const holdings = data.data.holdings;  // 修复：从data.data.holdings获取持仓数组
+                    const total = data.total_ratio || holdings.reduce((sum, h) => sum + h.持仓比例, 0);
+                    
+                    // 显示警告（如果有）
+                    let warningHtml = '';
+                    if (data.warning) {
+                        warningHtml = `<div style="background:#fff3cd;border:2px solid #ffc107;color:#856404;padding:15px;border-radius:8px;margin-bottom:15px;font-weight:bold;">
+                            ⚠️ ${data.warning}
+                        </div>`;
+                    }
+                    
+                    document.getElementById('holdingsResult').innerHTML = warningHtml + `
+                        <h3 style="margin-top:20px;">持仓信息 (总计: ${total.toFixed(2)}%)</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>排名</th>
+                                    <th>股票代码</th>
+                                    <th>股票名称</th>
+                                    <th>持仓比例</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${holdings.map((h, i) => `
+                                    <tr>
+                                        <td>${i + 1}</td>
+                                        <td>${h.股票代码}</td>
+                                        <td>${h.股票名称}</td>
+                                        <td>${h.持仓比例.toFixed(2)}%</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                    showMessage('holdingsMessage', forceUpdate ? '联网获取成功' : '从配置读取成功', true);
+                } else {
+                    showMessage('holdingsMessage', data.error, false);
+                }
+            } catch (error) {
+                document.getElementById('holdingsLoading').style.display = 'none';
+                showMessage('holdingsMessage', '获取失败: ' + error.message, false);
+            }
+        }
+
+        // 持仓编辑
+        function showHoldingsEditor() {
+            showModal('holdingsEditorModal');
+        }
+
+        async function loadHoldingsForEdit() {
+            const code = document.getElementById('editorFundCode').value.trim();
+            if (!code) {
+                showMessage('editorMessage', '请输入基金代码', false);
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/fund/holdings/${code}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const holdings = data.data.holdings;  // 修复：从data.data.holdings获取持仓数组
+                    document.getElementById('holdingsEditorContent').innerHTML = `
+                        <div class="holdings-editor">
+                            <h3>编辑持仓 - ${code}</h3>
+                            <div class="holding-row" style="font-weight:bold;margin-bottom:15px;">
+                                <div>股票代码</div>
+                                <div>股票名称</div>
+                                <div>持仓比例(%)</div>
+                                <div></div>
+                            </div>
+                            ${holdings.map((h, i) => `
+                                <div class="holding-row" id="holding-${i}">
+                                    <input type="text" value="${h.股票代码}" data-field="股票代码">
+                                    <input type="text" value="${h.股票名称}" data-field="股票名称">
+                                    <input type="number" step="0.01" value="${h.持仓比例}" data-field="持仓比例">
+                                    <button class="btn btn-warning btn-small" onclick="removeHolding(${i})">删除</button>
+                                </div>
+                            `).join('')}
+                            <button class="btn btn-success" onclick="addHolding()" style="margin-top:10px;">添加持仓</button>
+                            <button class="btn btn-primary" onclick="saveHoldings('${code}')" style="margin-top:10px;">保存修改</button>
+                        </div>
+                    `;
+                } else {
+                    showMessage('editorMessage', data.error, false);
+                }
+            } catch (error) {
+                showMessage('editorMessage', '加载失败: ' + error.message, false);
+            }
+        }
+
+        let holdingCounter = 0;
+        function addHolding() {
+            const container = document.getElementById('holdingsEditorContent').querySelector('.holdings-editor');
+            const newRow = document.createElement('div');
+            newRow.className = 'holding-row';
+            newRow.id = `holding-new-${holdingCounter}`;
+            newRow.innerHTML = `
+                <input type="text" placeholder="股票代码" data-field="股票代码">
+                <input type="text" placeholder="股票名称" data-field="股票名称">
+                <input type="number" step="0.01" placeholder="0.00" data-field="持仓比例">
+                <button class="btn btn-warning btn-small" onclick="this.parentElement.remove()">删除</button>
+            `;
+            container.insertBefore(newRow, container.querySelector('.btn-success'));
+            holdingCounter++;
+        }
+
+        function removeHolding(index) {
+            document.getElementById(`holding-${index}`).remove();
+        }
+
+        async function saveHoldings(code) {
+            const rows = document.querySelectorAll('.holding-row[id^="holding-"]');
+            const holdings = [];
+            
+            rows.forEach(row => {
+                const inputs = row.querySelectorAll('input');
+                if (inputs[0].value) {
+                    holdings.push({
+                        股票代码: inputs[0].value,
+                        股票名称: inputs[1].value,
+                        持仓比例: parseFloat(inputs[2].value) || 0
+                    });
+                }
+            });
+
+            if (holdings.length === 0) {
+                showMessage('editorMessage', '至少保留一个持仓', false);
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/fund/holdings/${code}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({holdings: holdings})
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showMessage('editorMessage', '保存成功！', true);
+                } else {
+                    showMessage('editorMessage', data.error, false);
+                }
+            } catch (error) {
+                showMessage('editorMessage', '保存失败: ' + error.message, false);
+            }
+        }
+
+        // 估值计算
+        function showValuation() {
+            showModal('valuationModal');
+        }
+
+        async function calculateAllValuations() {
+            document.getElementById('valuationLoading').style.display = 'block';
+            document.getElementById('valuationResult').innerHTML = '';
+
+            try {
+                const listResponse = await fetch('/api/fund/list');
+                const listData = await listResponse.json();
+                
+                if (!listData.success || listData.data.length === 0) {
+                    showMessage('valuationMessage', '没有可计算的基金', false);
+                    document.getElementById('valuationLoading').style.display = 'none';
+                    return;
+                }
+
+                const fundCodes = listData.data.map(f => f.code);
+                const response = await fetch('/api/fund/valuation/batch', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({fund_codes: fundCodes})
+                });
+                const data = await response.json();
+                
+                document.getElementById('valuationLoading').style.display = 'none';
+                
+                if (data.success) {
+                    const results = Object.values(data.data);
+                    document.getElementById('valuationResult').innerHTML = results.map(v => {
+                        const changeClass = v.估算涨跌幅 > 0 ? 'change-positive' : (v.估算涨跌幅 < 0 ? 'change-negative' : '');
+                        const changeSign = v.估算涨跌幅 > 0 ? '+' : '';
+                        
+                        return `
+                            <div class="valuation-card">
+                                <div class="valuation-header">
+                                    <div>
+                                        <div class="fund-name">${v.基金名称}</div>
+                                        <div class="fund-code">${v.基金代码}</div>
+                                    </div>
+                                    <div style="text-align:right;">
+                                        <div class="valuation-value ${changeClass}">${v.估算净值.toFixed(4)}</div>
+                                        <div class="${changeClass}" style="font-size:18px;font-weight:bold;">${changeSign}${v.估算涨跌幅.toFixed(2)}%</div>
+                                    </div>
+                                </div>
+                                <div class="stats-grid">
+                                    <div class="stat-item">
+                                        <div class="stat-label">上次净值</div>
+                                        <div class="stat-value">${v.上次净值.toFixed(4)}</div>
+                                        <div style="font-size:11px;color:#999;">${v.净值日期}</div>
+                                    </div>
+                                    <div class="stat-item">
+                                        <div class="stat-label">重仓股数</div>
+                                        <div class="stat-value">${v.重仓股数量}只</div>
+                                        <div style="font-size:11px;color:#999;">持仓${v.持仓比例合计.toFixed(1)}%</div>
+                                    </div>
+                                    <div class="stat-item">
+                                        <div class="stat-label">估算时间</div>
+                                        <div class="stat-value" style="font-size:14px;">${v.估算时间.split(' ')[1]}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                    showMessage('valuationMessage', `成功计算 ${results.length} 只基金估值`, true);
+                } else {
+                    showMessage('valuationMessage', data.error, false);
+                }
+            } catch (error) {
+                document.getElementById('valuationLoading').style.display = 'none';
+                showMessage('valuationMessage', '计算失败: ' + error.message, false);
+            }
+        }
+
+        // 生成监控页面
+        async function generateMonitorPage() {
+            if (!confirm('确定要生成监控页面吗？这可能需要一些时间。')) return;
+
+            try {
+                const response = await fetch('/api/generate/monitor', {method: 'POST'});
+                const data = await response.json();
+                
+                if (data.success) {
+                    if (confirm('监控页面生成成功！是否立即查看？')) {
+                        viewMonitorPage();
+                    }
+                } else {
+                    alert('生成失败: ' + data.error);
+                }
+            } catch (error) {
+                alert('生成失败: ' + error.message);
+            }
+        }
+
+        // 查看监控页面
+        function viewMonitorPage() {
+            window.open('/api/monitor/view', '_blank');
+        }
+
+        // 打开帮助文档
+        function openHelp() {
+            // 使用绝对路径打开本地文件
+            const helpPath = 'file://' + window.location.pathname.replace(/\\/g, '/').replace(/\/templates\/admin\.html$/, '') + '/.qoder/repowiki/zh/content/项目概述.md';
+            window.open(helpPath, '_blank');
+        }
+
+        // 点击弹窗外部关闭
+        window.onclick = function(event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1876,61 +1876,211 @@
             }
         });
 
-        // ========== 笔记功能 ==========
+        // ========== 笔记功能（服务器存储版）==========
         const NotesManager = {
             currentNoteId: null,
             autoSaveTimer: null,
-            notesIndexKey: 'fund_notes_index_v2', // 笔记索引key
+            notes: [], // 从服务器加载的笔记缓存
+            isLoading: false,
+            migrationDone: false,
             
-            init: function() {
-                this.migrateOldData(); // 迁移旧数据
+            init: async function() {
+                // 先迁移旧数据（LocalStorage -> 服务器）
+                await this.migrateOldData();
+                // 然后从服务器加载
+                await this.loadNotesFromServer();
                 this.loadOrCreateTodayNote();
                 this.setupEventListeners();
                 this.updateHistoryList();
             },
             
-            // 迁移旧版数据到新格式
-            migrateOldData: function() {
-                const oldKeys = [];
+            // 迁移旧版 LocalStorage 数据到服务器
+            migrateOldData: async function() {
+                if (this.migrationDone) return;
+                
+                const oldNotes = [];
+                
+                // 1. 检查新版格式 (fund_notes_entry_xxx)
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
-                    if (key && key.startsWith('fund_notes_') && !key.startsWith('fund_notes_index') && !key.startsWith('fund_notes_entry_')) {
-                        oldKeys.push(key);
+                    if (key && key.startsWith('fund_notes_entry_')) {
+                        try {
+                            const noteStr = localStorage.getItem(key);
+                            if (noteStr) {
+                                const note = JSON.parse(noteStr);
+                                if (note.id && note.date) {
+                                    oldNotes.push(note);
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('解析旧笔记失败:', key, e);
+                        }
                     }
                 }
                 
-                if (oldKeys.length === 0) return;
-                
-                const index = this.getNotesIndex();
-                oldKeys.forEach(key => {
-                    const date = key.replace('fund_notes_', '');
-                    const content = localStorage.getItem(key);
-                    if (content && content.trim()) {
-                        const noteId = 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                        const note = {
-                            id: noteId,
-                            date: date,
-                            content: content,
-                            createTime: new Date(date).getTime(),
-                            updateTime: Date.now()
-                        };
-                        localStorage.setItem(`fund_notes_entry_${noteId}`, JSON.stringify(note));
-                        index.push(note);
+                // 2. 检查旧版格式 (fund_notes_YYYY-MM-DD)
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith('fund_notes_') && 
+                        !key.startsWith('fund_notes_index') && 
+                        !key.startsWith('fund_notes_entry_')) {
+                        try {
+                            const date = key.replace('fund_notes_', '');
+                            const content = localStorage.getItem(key);
+                            if (content && content.trim()) {
+                                const noteId = 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                                oldNotes.push({
+                                    id: noteId,
+                                    date: date,
+                                    content: content,
+                                    createTime: new Date(date).getTime(),
+                                    updateTime: Date.now()
+                                });
+                            }
+                        } catch (e) {
+                            console.warn('解析旧版笔记失败:', key, e);
+                        }
                     }
-                    localStorage.removeItem(key);
-                });
+                }
                 
-                this.saveNotesIndex(index);
-                console.log(`已迁移 ${oldKeys.length} 条旧笔记数据`);
+                if (oldNotes.length === 0) {
+                    console.log('没有检测到需要迁移的旧笔记');
+                    this.migrationDone = true;
+                    return;
+                }
+                
+                console.log(`检测到 ${oldNotes.length} 条旧笔记，开始迁移...`);
+                
+                try {
+                    const response = await fetch('/api/notes/migrate', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({notes: oldNotes})
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        console.log(`笔记迁移完成: 成功 ${data.data.success_count} 条`);
+                        
+                        // 迁移成功后清除 LocalStorage 中的旧数据
+                        oldNotes.forEach(note => {
+                            localStorage.removeItem(`fund_notes_entry_${note.id}`);
+                        });
+                        
+                        // 清除旧版格式的数据
+                        for (let i = localStorage.length - 1; i >= 0; i--) {
+                            const key = localStorage.key(i);
+                            if (key && key.startsWith('fund_notes_') && 
+                                !key.startsWith('fund_notes_index') && 
+                                !key.startsWith('fund_notes_entry_')) {
+                                localStorage.removeItem(key);
+                            }
+                        }
+                        localStorage.removeItem('fund_notes_index_v2');
+                        
+                        showToast(`✅ 成功迁移 ${data.data.success_count} 条历史笔记到数据库`);
+                    } else {
+                        console.error('迁移失败:', data.error);
+                    }
+                } catch (e) {
+                    console.error('迁移请求失败:', e);
+                }
+                
+                this.migrationDone = true;
             },
             
-            getNotesIndex: function() {
-                const indexStr = localStorage.getItem(this.notesIndexKey);
-                return indexStr ? JSON.parse(indexStr) : [];
+            // 从服务器加载所有笔记
+            loadNotesFromServer: async function() {
+                try {
+                    this.isLoading = true;
+                    
+                    // 先检查表是否存在
+                    console.log('[笔记] 检查数据库表...');
+                    const checkResponse = await fetch('/api/notes/check');
+                    const checkData = await checkResponse.json();
+                    console.log('[笔记] 表检查结果:', checkData);
+                    
+                    if (!checkData.success) {
+                        console.error('[笔记] 表检查失败:', checkData.error);
+                    }
+                    
+                    const response = await fetch('/api/notes');
+                    const data = await response.json();
+                    if (data.success) {
+                        this.notes = data.data || [];
+                        console.log(`[笔记] 从服务器加载了 ${this.notes.length} 条笔记`);
+                    } else {
+                        console.error('[笔记] 加载失败:', data.error);
+                        this.notes = [];
+                    }
+                } catch (e) {
+                    console.error('[笔记] 加载请求失败:', e);
+                    this.notes = [];
+                } finally {
+                    this.isLoading = false;
+                }
             },
             
-            saveNotesIndex: function(index) {
-                localStorage.setItem(this.notesIndexKey, JSON.stringify(index));
+            // 保存笔记到服务器
+            saveToServer: async function(noteData) {
+                try {
+                    console.log('[保存笔记] 发送数据:', JSON.stringify(noteData));
+                    
+                    // 检查必要字段
+                    if (!noteData.id || !noteData.date) {
+                        console.error('[保存笔记] 缺少必要字段');
+                        return null;
+                    }
+                    
+                    const response = await fetch('/api/notes', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(noteData)
+                    });
+                    
+                    console.log('[保存笔记] HTTP状态:', response.status);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const data = await response.json();
+                    console.log('[保存笔记] 服务器响应:', data);
+                    
+                    if (data.success) {
+                        // 更新本地缓存
+                        const idx = this.notes.findIndex(n => n.id === noteData.id);
+                        if (idx >= 0) {
+                            this.notes[idx] = data.data;
+                        } else {
+                            this.notes.push(data.data);
+                        }
+                        return data.data;
+                    } else {
+                        console.error('[保存笔记] 服务器返回失败:', data.message);
+                        return null;
+                    }
+                } catch (e) {
+                    console.error('[保存笔记] 请求异常:', e);
+                    return null;
+                }
+            },
+            
+            // 删除服务器上的笔记
+            deleteFromServer: async function(noteId) {
+                try {
+                    const response = await fetch(`/api/notes/${noteId}`, {
+                        method: 'DELETE'
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        this.notes = this.notes.filter(n => n.id !== noteId);
+                        return true;
+                    }
+                } catch (e) {
+                    console.error('删除笔记失败:', e);
+                }
+                return false;
             },
             
             getTodayKey: function() {
@@ -1952,10 +2102,7 @@
             // 加载今天的笔记，如果没有则创建新笔记
             loadOrCreateTodayNote: function() {
                 const today = this.getTodayKey();
-                const index = this.getNotesIndex();
-                
-                // 查找今天的笔记
-                const todayNotes = index.filter(n => n.date === today);
+                const todayNotes = this.notes.filter(n => n.date === today);
                 
                 if (todayNotes.length > 0) {
                     // 加载最新的一条今天笔记
@@ -1969,21 +2116,18 @@
             
             // 根据ID加载笔记
             loadNoteById: function(noteId) {
-                const noteStr = localStorage.getItem(`fund_notes_entry_${noteId}`);
-                if (!noteStr) {
+                const note = this.notes.find(n => n.id === noteId);
+                if (!note) {
                     this.createNewNote();
                     return;
                 }
                 
-                const note = JSON.parse(noteStr);
                 this.currentNoteId = noteId;
-                
                 const editor = document.getElementById('dailyNotes');
                 editor.innerHTML = note.content || '<p><br></p>';
                 
                 // 更新标题显示
-                const index = this.getNotesIndex();
-                const sameDayNotes = index.filter(n => n.date === note.date);
+                const sameDayNotes = this.notes.filter(n => n.date === note.date);
                 const noteIndex = sameDayNotes.findIndex(n => n.id === noteId);
                 const noteNumber = sameDayNotes.length > 1 ? ` (第${noteIndex + 1}篇)` : '';
                 document.getElementById('notesDate').textContent = this.formatDate(note.date) + noteNumber;
@@ -1993,136 +2137,169 @@
             },
             
             // 创建新笔记
-            createNewNote: function() {
-                const today = this.getTodayKey();
-                const noteId = 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                
-                const note = {
-                    id: noteId,
-                    date: today,
-                    content: '<p><br></p>',
-                    createTime: Date.now(),
-                    updateTime: Date.now()
-                };
-                
-                // 保存笔记内容
-                localStorage.setItem(`fund_notes_entry_${noteId}`, JSON.stringify(note));
-                
-                // 更新索引
-                const index = this.getNotesIndex();
-                index.push(note);
-                this.saveNotesIndex(index);
-                
-                // 加载新笔记
-                this.currentNoteId = noteId;
-                const editor = document.getElementById('dailyNotes');
-                editor.innerHTML = '<p><br></p>';
-                editor.focus();
-                
-                // 更新显示
-                const sameDayNotes = index.filter(n => n.date === today);
-                const noteNumber = sameDayNotes.length > 1 ? ` (第${sameDayNotes.length}篇)` : '';
-                document.getElementById('notesDate').textContent = this.formatDate(today) + noteNumber;
-                
-                this.updateWordCount();
-                this.setStatus('新笔记', true);
-                this.updateHistoryList();
-                
-                // 切换到编辑视图
-                switchNotesView('edit');
+            createNewNote: async function() {
+                try {
+                    console.log('[新建笔记] 开始创建新笔记');
+                    
+                    const today = this.getTodayKey();
+                    const noteId = 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                    
+                    const note = {
+                        id: noteId,
+                        date: today,
+                        content: '<p><br></p>',
+                        createTime: Date.now(),
+                        updateTime: Date.now()
+                    };
+                    
+                    this.setStatus('正在创建...', false, true);
+                    
+                    // 保存到服务器
+                    console.log('[新建笔记] 正在保存到服务器...');
+                    const savedNote = await this.saveToServer(note);
+                    
+                    if (!savedNote) {
+                        console.error('[新建笔记] 保存失败');
+                        this.setStatus('创建失败', false, true);
+                        showToast('❌ 笔记创建失败，请检查网络连接');
+                        return;
+                    }
+                    
+                    console.log('[新建笔记] 保存成功:', savedNote);
+                    
+                    // 加载新笔记
+                    this.currentNoteId = noteId;
+                    const editor = document.getElementById('dailyNotes');
+                    if (editor) {
+                        editor.innerHTML = '<p><br></p>';
+                        editor.focus();
+                    }
+                    
+                    // 更新显示
+                    const sameDayNotes = this.notes.filter(n => n.date === today);
+                    const noteNumber = sameDayNotes.length > 1 ? ` (第${sameDayNotes.length}篇)` : '';
+                    const dateElement = document.getElementById('notesDate');
+                    if (dateElement) {
+                        dateElement.textContent = this.formatDate(today) + noteNumber;
+                    }
+                    
+                    this.updateWordCount();
+                    this.setStatus('新笔记', true);
+                    this.updateHistoryList();
+                    
+                    // 切换到编辑视图
+                    switchNotesView('edit');
+                    
+                    console.log('[新建笔记] 创建完成');
+                    showToast('✅ 新笔记创建成功');
+                    
+                } catch (error) {
+                    console.error('[新建笔记] 异常:', error);
+                    this.setStatus('创建异常', false, true);
+                    showToast('❌ 笔记创建出现异常: ' + error.message);
+                }
             },
             
-            // 检查内容是否为空（去除HTML标签后是否有实际文本内容）
+            // 检查内容是否为空
             isContentEmpty: function(content) {
                 if (!content || content === '<p><br></p>') return true;
                 
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = content;
                 
-                // 统一的文本提取逻辑
                 let textContent = '';
                 if (tempDiv.textContent !== undefined) {
                     textContent = tempDiv.textContent;
                 } else if (tempDiv.innerText !== undefined) {
                     textContent = tempDiv.innerText;
                 } else {
-                    // 备用方案
                     textContent = tempDiv.innerHTML.replace(/<[^>]*>/g, '');
                 }
                 
-                // 清理和标准化文本
                 textContent = textContent.trim();
                 textContent = textContent.replace(/[\u00A0\u2000-\u200F\u2028-\u202F\u3000]/g, ' ').trim();
                 
                 return textContent.length === 0;
             },
             
-            saveNotes: function() {
-                if (!this.currentNoteId) return;
+            // 保存笔记
+            saveNotes: async function() {
+                if (!this.currentNoteId || this.isLoading) {
+                    console.log('[保存笔记] 无法保存: 没有当前笔记或正在加载');
+                    return;
+                }
                 
                 const editor = document.getElementById('dailyNotes');
+                if (!editor) {
+                    console.error('[保存笔记] 找不到编辑器元素');
+                    return;
+                }
+                
                 const content = editor.innerHTML;
                 
-                // 如果内容为空，删除该笔记而不是保存
+                // 如果内容为空，删除该笔记
                 if (this.isContentEmpty(content)) {
-                    this.deleteNote(this.currentNoteId, false);
+                    console.log('[保存笔记] 内容为空，准备删除笔记');
+                    await this.deleteNote(this.currentNoteId, false);
                     this.setStatus('内容为空，已删除', true);
                     return;
                 }
                 
-                // 获取并更新笔记
-                const noteStr = localStorage.getItem(`fund_notes_entry_${this.currentNoteId}`);
-                if (noteStr) {
-                    const note = JSON.parse(noteStr);
+                // 获取当前笔记
+                const note = this.notes.find(n => n.id === this.currentNoteId);
+                if (note) {
+                    console.log('[保存笔记] 开始保存笔记:', this.currentNoteId);
+                    
                     note.content = content;
                     note.updateTime = Date.now();
-                    localStorage.setItem(`fund_notes_entry_${this.currentNoteId}`, JSON.stringify(note));
                     
-                    // 更新索引
-                    const index = this.getNotesIndex();
-                    const indexItem = index.find(n => n.id === this.currentNoteId);
-                    if (indexItem) {
-                        indexItem.updateTime = Date.now();
-                        this.saveNotesIndex(index);
+                    const savedNote = await this.saveToServer(note);
+                    if (savedNote) {
+                        console.log('[保存笔记] 保存成功');
+                        this.setStatus('已保存', true);
+                        this.updateHistoryList();
+                    } else {
+                        console.error('[保存笔记] 保存失败');
+                        this.setStatus('保存失败', false, true);
+                        showToast('❌ 笔记保存失败，请检查网络连接');
                     }
+                } else {
+                    console.error('[保存笔记] 找不到当前笔记:', this.currentNoteId);
+                    this.setStatus('笔记不存在', false, true);
                 }
-                
-                this.setStatus('已保存', true);
-                this.updateHistoryList();
             },
             
             // 删除笔记
-            deleteNote: function(noteId, confirmDelete = true) {
+            deleteNote: async function(noteId, confirmDelete = true) {
                 if (confirmDelete && !confirm('确定要删除这篇笔记吗？此操作不可恢复。')) {
                     return false;
                 }
                 
-                // 删除笔记内容
-                localStorage.removeItem(`fund_notes_entry_${noteId}`);
-                
-                // 从索引中移除
-                let index = this.getNotesIndex();
-                index = index.filter(n => n.id !== noteId);
-                this.saveNotesIndex(index);
-                
-                // 如果删除的是当前笔记，创建新笔记
-                if (noteId === this.currentNoteId) {
-                    this.currentNoteId = null;
-                    this.loadOrCreateTodayNote();
+                const success = await this.deleteFromServer(noteId);
+                if (success) {
+                    // 如果删除的是当前笔记，创建新笔记
+                    if (noteId === this.currentNoteId) {
+                        this.currentNoteId = null;
+                        this.loadOrCreateTodayNote();
+                    }
+                    this.updateHistoryList();
                 }
-                
-                this.updateHistoryList();
-                return true;
+                return success;
             },
             
             autoSave: function() {
                 if (this.autoSaveTimer) {
                     clearTimeout(this.autoSaveTimer);
                 }
-                this.setStatus('正在输入...', false, true);
-                this.autoSaveTimer = setTimeout(() => {
-                    this.saveNotes();
-                }, 1000);
+                
+                // 只有当有当前笔记且不为空时才显示正在输入状态
+                if (this.currentNoteId && !this.isContentEmpty(document.getElementById('dailyNotes').innerHTML)) {
+                    this.setStatus('正在输入...', false, true);
+                }
+                
+                this.autoSaveTimer = setTimeout(async () => {
+                    await this.saveNotes();
+                }, 1500); // 增加到1.5秒，减少频繁保存
             },
             
             setStatus: function(text, saved = false, unsaved = false) {
@@ -2161,20 +2338,14 @@
             },
             
             updateHistoryList: function() {
-                console.log('=== 开始更新历史记录列表 ===');
-                
-                const index = this.getNotesIndex();
-                console.log('获取到索引数据:', index.length, '条');
-                
-                if (index.length === 0) {
+                if (this.notes.length === 0) {
                     document.getElementById('historyList').innerHTML = '<div class="history-empty">暂无历史记录</div>';
-                    console.log('无历史记录');
                     return;
                 }
                 
                 // 按日期分组，每天内按时间倒序
                 const groupedByDate = {};
-                index.forEach(note => {
+                this.notes.forEach(note => {
                     if (!groupedByDate[note.date]) {
                         groupedByDate[note.date] = [];
                     }
@@ -2189,85 +2360,46 @@
                 // 日期倒序
                 const sortedDates = Object.keys(groupedByDate).sort((a, b) => b.localeCompare(a));
                 
-                console.log('分组后的数据:', groupedByDate);
-                
                 const listEl = document.getElementById('historyList');
-                
-                // 构建HTML
                 let htmlContent = '';
                 
                 sortedDates.forEach(date => {
                     const dayNotes = groupedByDate[date];
                     
                     dayNotes.forEach((note, idx) => {
-                        console.log('处理笔记:', note.id, note.date);
-                        
-                        // 获取笔记的实际内容
-                        let actualContent = note.content || '';
-                        console.log('原始内容:', actualContent);
-                        
-                        // 尝试从localStorage获取最新内容
-                        try {
-                            const storageKey = `fund_notes_entry_${note.id}`;
-                            const storedNote = localStorage.getItem(storageKey);
-                            if (storedNote) {
-                                const parsedNote = JSON.parse(storedNote);
-                                if (parsedNote.content) {
-                                    actualContent = parsedNote.content;
-                                    console.log('从localStorage获取到更新内容:', actualContent);
-                                }
-                            }
-                        } catch (e) {
-                            console.warn('获取localStorage内容失败:', e);
-                        }
-                        
-                        // 处理显示内容
                         let displayContent = '';
                         
-                        if (actualContent && actualContent !== '<p><br></p>') {
-                            // 创建临时元素提取纯文本
+                        if (note.content && note.content !== '<p><br></p>') {
                             const tempDiv = document.createElement('div');
-                            tempDiv.innerHTML = actualContent;
+                            tempDiv.innerHTML = note.content;
                             
-                            // 多重方法提取文本
                             let textContent = '';
                             if ('textContent' in tempDiv) {
                                 textContent = tempDiv.textContent;
                             } else if ('innerText' in tempDiv) {
                                 textContent = tempDiv.innerText;
                             } else {
-                                // 最后的备选方案
-                                textContent = actualContent.replace(/<[^>]*>/g, '');
+                                textContent = note.content.replace(/<[^>]*>/g, '');
                             }
                             
-                            // 彻底清理文本
                             textContent = textContent.trim();
-                            
-                            // 移除各种空白字符
                             textContent = textContent.replace(/[\u00A0\u2000-\u200F\u2028-\u202F\u3000\s]+/g, ' ');
                             textContent = textContent.trim();
-                            
-                            console.log('提取的文本内容:', textContent);
-                            console.log('文本长度:', textContent.length);
                             
                             if (textContent.length > 0) {
                                 displayContent = textContent;
                             }
                         }
                         
-                        // 如果仍然没有内容，显示占位符
                         if (!displayContent) {
                             displayContent = '<span style="color:#999;font-style:italic;">（空笔记）</span>';
-                            console.log('判定为空笔记');
-                        } else {
-                            console.log('判定为有内容笔记');
                         }
                         
                         const isActive = note.id === this.currentNoteId;
                         const noteLabel = dayNotes.length > 1 ? ` 第${idx + 1}篇` : '';
                         const timeLabel = this.formatDateTime(note.createTime);
                         
-                        const noteHtml = `
+                        htmlContent += `
                             <div class="history-item ${isActive ? 'active' : ''}">
                                 <div class="history-item-header">
                                     <div class="history-date">${this.formatDate(date)}${noteLabel} <span style="font-size:11px;opacity:0.7;">${timeLabel}</span></div>
@@ -2276,13 +2408,10 @@
                                 <div class="history-content" onclick="NotesManager.loadNoteById('${note.id}')">${displayContent}</div>
                             </div>
                         `;
-                        
-                        htmlContent += noteHtml;
                     });
                 });
                 
                 listEl.innerHTML = htmlContent;
-                console.log('=== 历史记录列表更新完成 ===');
             }
         };
 

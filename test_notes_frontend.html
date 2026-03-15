@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>笔记功能测试</title>
+    <script>
+        async function testCreateNote() {
+            const noteId = 'test_note_' + Date.now();
+            const today = new Date().toISOString().split('T')[0];
+            
+            const noteData = {
+                id: noteId,
+                date: today,
+                content: '<p>测试笔记内容 - ' + new Date().toLocaleString() + '</p>',
+                createTime: Date.now(),
+                updateTime: Date.now()
+            };
+            
+            console.log('发送笔记数据:', noteData);
+            
+            try {
+                const response = await fetch('/api/notes', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(noteData)
+                });
+                
+                const result = await response.json();
+                console.log('服务器响应:', result);
+                
+                if (result.success) {
+                    document.getElementById('result').innerHTML += 
+                        `<div style="color: green;">✅ 成功创建笔记: ${noteId}</div>`;
+                } else {
+                    document.getElementById('result').innerHTML += 
+                        `<div style="color: red;">❌ 创建失败: ${result.message}</div>`;
+                }
+            } catch (error) {
+                console.error('请求失败:', error);
+                document.getElementById('result').innerHTML += 
+                    `<div style="color: red;">❌ 请求异常: ${error.message}</div>`;
+            }
+        }
+        
+        async function testGetNotes() {
+            try {
+                const response = await fetch('/api/notes');
+                const result = await response.json();
+                console.log('获取笔记列表:', result);
+                
+                if (result.success) {
+                    const notesList = document.getElementById('notesList');
+                    notesList.innerHTML = '';
+                    
+                    result.data.forEach(note => {
+                        const div = document.createElement('div');
+                        div.innerHTML = `
+                            <strong>ID:</strong> ${note.id}<br>
+                            <strong>日期:</strong> ${note.date}<br>
+                            <strong>内容:</strong> ${note.content}<br>
+                            <strong>创建时间:</strong> ${new Date(note.createTime).toLocaleString()}<br>
+                            <hr>
+                        `;
+                        notesList.appendChild(div);
+                    });
+                    
+                    document.getElementById('result').innerHTML += 
+                        `<div style="color: blue;">📋 获取到 ${result.data.length} 条笔记</div>`;
+                } else {
+                    document.getElementById('result').innerHTML += 
+                        `<div style="color: red;">❌ 获取失败: ${result.message}</div>`;
+                }
+            } catch (error) {
+                console.error('请求失败:', error);
+                document.getElementById('result').innerHTML += 
+                    `<div style="color: red;">❌ 请求异常: ${error.message}</div>`;
+            }
+        }
+        
+        async function testAutoSave() {
+            // 模拟用户输入和自动保存
+            const editor = document.getElementById('editor');
+            editor.innerHTML = '<p>自动保存测试内容 - ' + new Date().toLocaleString() + '</p>';
+            
+            // 触发input事件
+            const event = new Event('input', { bubbles: true });
+            editor.dispatchEvent(event);
+            
+            document.getElementById('result').innerHTML += 
+                `<div style="color: orange;">🔄 触发自动保存...</div>`;
+        }
+    </script>
+</head>
+<body>
+    <h1>笔记功能测试页面</h1>
+    
+    <div>
+        <button onclick="testCreateNote()">创建新笔记</button>
+        <button onclick="testGetNotes()">获取所有笔记</button>
+        <button onclick="testAutoSave()">测试自动保存</button>
+    </div>
+    
+    <div id="result" style="margin-top: 20px;"></div>
+    
+    <div style="margin-top: 20px;">
+        <h3>测试编辑器</h3>
+        <div id="editor" contenteditable="true" style="border: 1px solid #ccc; padding: 10px; min-height: 100px;">
+            <p>在此处输入测试内容...</p>
+        </div>
+    </div>
+    
+    <div style="margin-top: 20px;">
+        <h3>笔记列表</h3>
+        <div id="notesList"></div>
+    </div>
+</body>
+</html>

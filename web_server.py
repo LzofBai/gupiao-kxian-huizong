@@ -679,6 +679,167 @@ def update_fund_position(fund_code):
 # 如需静态HTML功能，请参考文档中的说明
 
 
+# ==================== 笔记管理API ====================
+
+@app.route('/api/notes', methods=['GET'])
+@api_endpoint
+def get_all_notes():
+    """获取所有笔记"""
+    notes = db.get_all_notes()
+    return success_response(notes)
+
+
+@app.route('/api/notes', methods=['POST'])
+@api_endpoint
+def save_note():
+    """保存笔记（新增或更新）"""
+    data = request.json
+    
+    note_id = data.get('id')
+    note_date = data.get('date')
+    content = data.get('content')  # 富文本HTML内容
+    create_time = data.get('createTime')
+    
+    log.info(f"[保存笔记] ID={note_id}, Date={note_date}, Content长度={len(content) if content else 0}")
+    
+    if not note_id or not note_date:
+        log.warning(f"[保存笔记] 参数错误: id={note_id}, date={note_date}")
+        return error_response(ValidationError('笔记ID和日期不能为空'))
+    
+    # 验证日期格式
+    try:
+        datetime.strptime(note_date, '%Y-%m-%d')
+    except ValueError as e:
+        log.warning(f"[保存笔记] 日期格式错误: {note_date}, 错误: {e}")
+        return error_response(ValidationError('日期格式必须为 YYYY-MM-DD'))
+    
+    try:
+        result = db.save_note(note_id, note_date, content, create_time)
+        
+        if result:
+            log.info(f"[保存笔记] 成功: {note_id}")
+            return success_response(result, '笔记保存成功')
+        else:
+            log.error(f"[保存笔记] 数据库返回失败: {note_id}")
+            return error_response(APIError('保存笔记失败', 500, 'SAVE_NOTE_ERROR'))
+    except Exception as e:
+        log.error(f"[保存笔记] 异常: {e}", exc_info=True)
+        return error_response(APIError(f'保存笔记异常: {str(e)}', 500, 'SAVE_NOTE_EXCEPTION'))
+
+
+@app.route('/api/notes/<note_id>', methods=['GET'])
+@api_endpoint
+def get_note_by_id(note_id):
+    """根据ID获取单条笔记"""
+    note = db.get_note_by_id(note_id)
+    if note:
+        return success_response(note)
+    else:
+        return error_response(NotFoundError('笔记', note_id))
+
+
+@app.route('/api/notes/<note_id>', methods=['DELETE'])
+@api_endpoint
+def delete_note(note_id):
+    """删除笔记"""
+    if db.delete_note(note_id):
+        return success_response(None, '笔记删除成功')
+    else:
+        return error_response(NotFoundError('笔记', note_id))
+
+
+@app.route('/api/notes/date/<note_date>', methods=['GET'])
+@api_endpoint
+def get_notes_by_date(note_date):
+    """获取指定日期的所有笔记"""
+    # 验证日期格式
+    try:
+        datetime.strptime(note_date, '%Y-%m-%d')
+    except ValueError:
+        return error_response(ValidationError('日期格式必须为 YYYY-MM-DD'))
+    
+    notes = db.get_notes_by_date(note_date)
+    return success_response(notes)
+
+
+@app.route('/api/notes/statistics', methods=['GET'])
+@api_endpoint
+def get_notes_statistics():
+    """获取笔记统计信息"""
+    stats = db.get_notes_statistics()
+    return success_response(stats)
+
+
+@app.route('/api/notes/check', methods=['GET'])
+@api_endpoint
+def check_notes_table():
+    """检查笔记表是否存在"""
+    try:
+        with db._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='daily_notes'")
+            exists = cursor.fetchone() is not None
+            
+            if exists:
+                # 获取表结构
+                cursor.execute("PRAGMA table_info(daily_notes)")
+                columns = [row[1] for row in cursor.fetchall()]
+                return success_response({
+                    'exists': True,
+                    'columns': columns
+                }, '笔记表已存在')
+            else:
+                # 尝试创建表
+                db._init_database()
+                return success_response({
+                    'exists': False,
+                    'fixed': True
+                }, '笔记表已创建')
+    except Exception as e:
+        log.error(f"检查笔记表失败: {e}", exc_info=True)
+        return error_response(APIError(f'检查失败: {str(e)}', 500, 'CHECK_ERROR'))
+
+
+@app.route('/api/notes/migrate', methods=['POST'])
+@api_endpoint
+def migrate_notes():
+    """批量迁移笔记（从 LocalStorage 导入到数据库）"""
+    data = request.json
+    notes_list = data.get('notes', [])
+    
+    if not notes_list:
+        return error_response(ValidationError('笔记列表不能为空'))
+    
+    success_count = 0
+    failed_count = 0
+    
+    for note_data in notes_list:
+        try:
+            note_id = note_data.get('id')
+            note_date = note_data.get('date')
+            content = note_data.get('content')
+            create_time = note_data.get('createTime')
+            
+            if not note_id or not note_date:
+                failed_count += 1
+                continue
+            
+            result = db.save_note(note_id, note_date, content, create_time)
+            if result:
+                success_count += 1
+            else:
+                failed_count += 1
+        except Exception as e:
+            log.error(f"迁移笔记失败: {e}")
+            failed_count += 1
+    
+    log.info(f"笔记迁移完成: 成功 {success_count} 条, 失败 {failed_count} 条")
+    return success_response({
+        'success_count': success_count,
+        'failed_count': failed_count
+    }, f'迁移完成: 成功 {success_count} 条, 失败 {failed_count} 条')
+
+
 import signal
 
 # 全局变量，用于控制服务器关闭

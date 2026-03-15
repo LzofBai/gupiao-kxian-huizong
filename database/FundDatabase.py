@@ -98,6 +98,36 @@ class FundDatabase:
                 ON fund_holdings(stock_code)
             ''')
             
+            # 4. 每日笔记表 - 存储富文本笔记内容
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS daily_notes (
+                    id TEXT PRIMARY KEY,
+                    note_date TEXT NOT NULL,
+                    content TEXT,           -- 存储富文本HTML内容
+                    create_time INTEGER,    -- 创建时间戳（毫秒）
+                    update_time INTEGER     -- 更新时间戳（毫秒）
+                )
+            ''')
+            
+            # 5. 笔记日期索引，便于按日期查询
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_notes_date 
+                ON daily_notes(note_date)
+            ''')
+            
+            # 6. 笔记更新时间索引，便于排序
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_notes_update_time 
+                ON daily_notes(update_time DESC)
+            ''')
+            
+            # 验证表是否创建成功
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='daily_notes'")
+            if cursor.fetchone():
+                log.info("✓ daily_notes 表已就绪")
+            else:
+                log.error("✗ daily_notes 表创建失败！")
+            
             log.info("数据库表结构创建完成")
     
     # ==================== 基金管理 ====================
@@ -602,6 +632,221 @@ class FundDatabase:
         except Exception as e:
             log.error(f"数据库备份失败: {e}")
             return False
+    
+    # ==================== 每日笔记管理 ====================
+    
+    def save_note(self, note_id: str, note_date: str, content: str, 
+                  create_time: int = None) -> dict:
+        """
+        保存笔记（新增或更新）
+        
+        Args:
+            note_id: 笔记唯一ID
+            note_date: 日期 (YYYY-MM-DD格式)
+            content: 笔记内容（富文本HTML）
+            create_time: 创建时间戳（毫秒），为空则使用当前时间
+            
+        Returns:
+            dict: 笔记数据
+        """
+        try:
+            import time
+            if create_time is None:
+                create_time = int(time.time() * 1000)
+            update_time = int(time.time() * 1000)
+            
+            log.info(f"[DB保存笔记] ID={note_id}, Date={note_date}, Content长度={len(content) if content else 0}")
+            
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # 检查表是否存在
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='daily_notes'")
+                if not cursor.fetchone():
+                    log.error("[DB保存笔记] daily_notes 表不存在！")
+                    # 重新初始化表
+                    self._init_database()
+                
+                cursor.execute('''
+                    INSERT OR REPLACE INTO daily_notes 
+                    (id, note_date, content, create_time, update_time)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (note_id, note_date, content, create_time, update_time))
+                
+                log.info(f"[DB保存笔记] 成功: {note_id}")
+                return {
+                    'id': note_id,
+                    'date': note_date,
+                    'content': content,
+                    'createTime': create_time,
+                    'updateTime': update_time
+                }
+        except Exception as e:
+            log.error(f"[DB保存笔记] 失败: {e}", exc_info=True)
+            return None
+    
+    def get_all_notes(self) -> list:
+        """
+        获取所有笔记，按日期倒序、更新时间倒序排列
+        
+        Returns:
+            list: 笔记列表
+        """
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id, note_date, content, create_time, update_time
+                    FROM daily_notes
+                    ORDER BY note_date DESC, update_time DESC
+                ''')
+                
+                notes = []
+                for row in cursor.fetchall():
+                    notes.append({
+                        'id': row['id'],
+                        'date': row['note_date'],
+                        'content': row['content'],
+                        'createTime': row['create_time'],
+                        'updateTime': row['update_time']
+                    })
+                return notes
+        except Exception as e:
+            log.error(f"获取笔记列表失败: {e}")
+            return []
+    
+    def get_note_by_id(self, note_id: str) -> dict:
+        """
+        根据ID获取单条笔记
+        
+        Args:
+            note_id: 笔记ID
+            
+        Returns:
+            dict: 笔记数据，不存在返回None
+        """
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id, note_date, content, create_time, update_time
+                    FROM daily_notes
+                    WHERE id = ?
+                ''', (note_id,))
+                
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        'id': row['id'],
+                        'date': row['note_date'],
+                        'content': row['content'],
+                        'createTime': row['create_time'],
+                        'updateTime': row['update_time']
+                    }
+                return None
+        except Exception as e:
+            log.error(f"获取笔记失败: {e}")
+            return None
+    
+    def delete_note(self, note_id: str) -> bool:
+        """
+        删除笔记
+        
+        Args:
+            note_id: 笔记ID
+            
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM daily_notes WHERE id = ?', (note_id,))
+                if cursor.rowcount > 0:
+                    log.info(f"笔记删除成功: {note_id}")
+                    return True
+                else:
+                    log.warning(f"笔记不存在: {note_id}")
+                    return False
+        except Exception as e:
+            log.error(f"删除笔记失败: {e}")
+            return False
+    
+    def get_notes_by_date(self, note_date: str) -> list:
+        """
+        获取指定日期的所有笔记
+        
+        Args:
+            note_date: 日期 (YYYY-MM-DD格式)
+            
+        Returns:
+            list: 笔记列表
+        """
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id, note_date, content, create_time, update_time
+                    FROM daily_notes
+                    WHERE note_date = ?
+                    ORDER BY create_time DESC
+                ''', (note_date,))
+                
+                notes = []
+                for row in cursor.fetchall():
+                    notes.append({
+                        'id': row['id'],
+                        'date': row['note_date'],
+                        'content': row['content'],
+                        'createTime': row['create_time'],
+                        'updateTime': row['update_time']
+                    })
+                return notes
+        except Exception as e:
+            log.error(f"获取日期笔记失败: {e}")
+            return []
+    
+    def get_notes_statistics(self) -> dict:
+        """
+        获取笔记统计信息
+        
+        Returns:
+            dict: 统计信息
+        """
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # 笔记总数
+                cursor.execute("SELECT COUNT(*) FROM daily_notes")
+                total_notes = cursor.fetchone()[0]
+                
+                # 有笔记的日期数
+                cursor.execute("SELECT COUNT(DISTINCT note_date) FROM daily_notes")
+                total_days = cursor.fetchone()[0]
+                
+                # 最早笔记日期
+                cursor.execute("SELECT MIN(note_date) FROM daily_notes")
+                earliest = cursor.fetchone()[0]
+                
+                # 最新笔记日期
+                cursor.execute("SELECT MAX(note_date) FROM daily_notes")
+                latest = cursor.fetchone()[0]
+                
+                return {
+                    'total_notes': total_notes,
+                    'total_days': total_days,
+                    'earliest_date': earliest,
+                    'latest_date': latest
+                }
+        except Exception as e:
+            log.error(f"获取笔记统计失败: {e}")
+            return {
+                'total_notes': 0,
+                'total_days': 0,
+                'earliest_date': None,
+                'latest_date': None
+            }
 
 
 if __name__ == '__main__':

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>笔记显示修复测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        .history-item { border: 1px solid #ccc; margin: 10px 0; padding: 10px; }
+        .history-content { margin: 5px 0; }
+        button { padding: 8px 15px; margin: 5px; cursor: pointer; }
+        .result { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+    </style>
+</head>
+<body>
+    <h1>每日看盘笔记显示修复测试</h1>
+    
+    <div class="test-section">
+        <h2>测试不同内容类型的显示效果</h2>
+        <button onclick="testContentTypes()">测试各种内容类型</button>
+        <div id="testResults"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>模拟历史记录显示</h2>
+        <button onclick="testHistoryDisplay()">测试历史记录显示</button>
+        <div id="historyTest"></div>
+    </div>
+
+    <script>
+        // 模拟修复后的笔记管理器逻辑
+        const TestNotesManager = {
+            // 修复后的内容检测逻辑
+            isContentEmpty: function(content) {
+                if (!content || content === '<p><br></p>') return true;
+                
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = content;
+                
+                // 统一的文本提取逻辑
+                let textContent = '';
+                if (tempDiv.textContent !== undefined) {
+                    textContent = tempDiv.textContent;
+                } else if (tempDiv.innerText !== undefined) {
+                    textContent = tempDiv.innerText;
+                } else {
+                    // 备用方案
+                    textContent = tempDiv.innerHTML.replace(/<[^>]*>/g, '');
+                }
+                
+                // 清理和标准化文本
+                textContent = textContent.trim();
+                textContent = textContent.replace(/[\u00A0\u2000-\u200F\u2028-\u202F\u3000]/g, ' ').trim();
+                
+                return textContent.length === 0;
+            },
+            
+            // 修复后的历史记录显示逻辑
+            getDisplayContent: function(note) {
+                let displayContent = '';
+                const content = note.content || '';
+                
+                if (content && content !== '<p><br></p>') {
+                    // 创建临时元素来提取纯文本
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = content;
+                    
+                    // 提取文本内容，处理各种可能的情况
+                    let textContent = '';
+                    if (tempDiv.textContent !== undefined) {
+                        textContent = tempDiv.textContent;
+                    } else if (tempDiv.innerText !== undefined) {
+                        textContent = tempDiv.innerText;
+                    } else {
+                        // 备用方案
+                        textContent = tempDiv.innerHTML.replace(/<[^>]*>/g, '');
+                    }
+                    
+                    // 清理文本并检查是否为空
+                    textContent = textContent.trim();
+                    
+                    // 移除常见的空白字符
+                    textContent = textContent.replace(/[\u00A0\u2000-\u200F\u2028-\u202F\u3000]/g, ' ').trim();
+                    
+                    if (textContent.length > 0) {
+                        displayContent = textContent;
+                    }
+                }
+                
+                // 如果没有有效内容，显示占位符
+                if (!displayContent) {
+                    displayContent = '<span style="color:#999;font-style:italic;">（空笔记）</span>';
+                }
+                
+                return displayContent;
+            }
+        };
+
+        function testContentTypes() {
+            const testCases = [
+                { name: '正常文本内容', content: '<p>今日市场表现良好，上证指数上涨1.5%</p>' },
+                { name: '带格式的文本', content: '<p><strong>重要提醒：</strong>关注科技板块走势</p>' },
+                { name: '空段落', content: '<p><br></p>' },
+                { name: '只有HTML标签', content: '<p></p>' },
+                { name: '包含特殊空白字符', content: '<p>\u00A0\u3000&nbsp;这是测试内容\u2000</p>' },
+                { name: '混合内容', content: '<div><p>第一段内容</p><p><br></p><p>第二段内容</p></div>' },
+                { name: '无内容', content: '' },
+                { name: 'null内容', content: null }
+            ];
+            
+            let results = '<h3>内容类型测试结果：</h3>';
+            
+            testCases.forEach(testCase => {
+                const isEmpty = TestNotesManager.isContentEmpty(testCase.content);
+                const displayContent = TestNotesManager.getDisplayContent(testCase);
+                
+                results += `
+                    <div class="result">
+                        <strong>${testCase.name}:</strong><br>
+                        原始内容: ${JSON.stringify(testCase.content)}<br>
+                        是否为空: ${isEmpty}<br>
+                        显示内容: ${displayContent}<br>
+                    </div>
+                `;
+            });
+            
+            document.getElementById('testResults').innerHTML = results;
+        }
+
+        function testHistoryDisplay() {
+            // 模拟一些测试笔记数据
+            const mockNotes = [
+                {
+                    id: 'note_1',
+                    date: '2026-03-15',
+                    content: '<p>今日市场分析：大盘震荡上行，成交量温和放大。重点关注半导体和新能源板块的表现。</p>',
+                    createTime: Date.now() - 3600000
+                },
+                {
+                    id: 'note_2', 
+                    date: '2026-03-15',
+                    content: '<p><br></p>',
+                    createTime: Date.now() - 7200000
+                },
+                {
+                    id: 'note_3',
+                    date: '2026-03-14',
+                    content: '<p><strong>昨日总结：</strong>市场回调，但属于正常调整。建议逢低布局优质标的。</p>',
+                    createTime: Date.now() - 86400000
+                }
+            ];
+            
+            let historyHtml = '<h3>模拟历史记录显示：</h3>';
+            
+            // 按日期分组
+            const groupedByDate = {};
+            mockNotes.forEach(note => {
+                if (!groupedByDate[note.date]) {
+                    groupedByDate[note.date] = [];
+                }
+                groupedByDate[note.date].push(note);
+            });
+            
+            // 排序并显示
+            Object.keys(groupedByDate).sort((a, b) => b.localeCompare(a)).forEach(date => {
+                const dayNotes = groupedByDate[date].sort((a, b) => b.createTime - a.createTime);
+                
+                historyHtml += `<h4>${date} (${dayNotes.length}篇)</h4>`;
+                
+                dayNotes.forEach((note, idx) => {
+                    const displayContent = TestNotesManager.getDisplayContent(note);
+                    const noteLabel = dayNotes.length > 1 ? ` 第${idx + 1}篇` : '';
+                    const time = new Date(note.createTime).toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit'});
+                    
+                    historyHtml += `
+                        <div class="history-item">
+                            <div><strong>${date}${noteLabel} ${time}</strong></div>
+                            <div class="history-content">${displayContent}</div>
+                        </div>
+                    `;
+                });
+            });
+            
+            document.getElementById('historyTest').innerHTML = historyHtml;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>二维码功能测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-container { max-width: 800px; margin: 0 auto; }
+        .test-section { margin: 30px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+        button { padding: 10px 20px; margin: 5px; background: #12B7F5; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0d8bc9; }
+        #qrCodeContainer { text-align: center; margin: 20px 0; }
+        canvas { border: 1px solid #ddd; padding: 10px; background: white; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 10% auto; padding: 20px; border-radius: 8px; width: 80%; max-width: 400px; text-align: center; }
+        .close { float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .close:hover { color: #ff0000; }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>📱 二维码功能测试</h1>
+        
+        <div class="test-section">
+            <h2>测试功能</h2>
+            <button onclick="testQRGeneration()">测试二维码生成</button>
+            <button onclick="testShowQRCode()">显示完整功能</button>
+            <div id="qrCodeContainer"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>测试信息</h2>
+            <p>群名称: 股票基金交流测试群</p>
+            <p>群号: 123456789</p>
+            <p>链接: https://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=test123</p>
+        </div>
+    </div>
+
+    <!-- 二维码展示弹窗 -->
+    <div id="qrCodeModal" class="modal">
+        <div class="modal-content">
+            <div style="position: relative;">
+                <span class="close" onclick="closeQRCodeModal()">&times;</span>
+                <h2 style="color:#12B7F5;">📱 加入QQ群</h2>
+            </div>
+            <div id="qrCodeContent" style="padding: 20px;">
+                <div id="qrCodeContainerModal" style="margin: 20px 0;"></div>
+                <div id="qrCodeInfo" style="margin: 15px 0;">
+                    <h3 id="groupName" style="color: #333; margin: 10px 0;"></h3>
+                    <p id="groupNumber" style="color: #666; font-size: 16px; margin: 5px 0;"></p>
+                    <p style="color: #999; font-size: 13px; margin: 10px 0;">请使用手机QQ扫描上方二维码加入群聊</p>
+                </div>
+                <div style="margin-top: 20px;">
+                    <button onclick="copyGroupNumber()" class="btn" style="background:#6c757d;color:white;padding:8px 20px;margin:0 5px;border:none;border-radius:4px;cursor:pointer;">复制群号</button>
+                    <button onclick="openQQUrl()" class="btn" style="background:#12B7F5;color:white;padding:8px 20px;margin:0 5px;border:none;border-radius:4px;cursor:pointer;">打开QQ链接</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 当前群组信息
+        let currentGroupInfo = {
+            name: '',
+            number: '',
+            link: ''
+        };
+
+        // 测试二维码生成
+        function testQRGeneration() {
+            const testUrl = 'https://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=test123';
+            generateQRCode(testUrl);
+        }
+
+        // 显示完整功能
+        function testShowQRCode() {
+            showQRCode('股票基金交流测试群', '123456789', 'https://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=test123');
+        }
+
+        // 显示二维码
+        function showQRCode(name, number, link) {
+            // 保存当前群组信息
+            currentGroupInfo = { name, number, link };
+            
+            // 设置群组信息显示
+            document.getElementById('groupName').textContent = name;
+            document.getElementById('groupNumber').textContent = '群号：' + number;
+            
+            // 生成二维码
+            generateQRCodeModal(link);
+            
+            // 显示二维码弹窗
+            document.getElementById('qrCodeModal').style.display = 'block';
+        }
+
+        // 生成二维码 (主页面)
+        function generateQRCode(url) {
+            const container = document.getElementById('qrCodeContainer');
+            container.innerHTML = '';
+            
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = 200;
+                canvas.height = 200;
+                canvas.style.border = '1px solid #ddd';
+                canvas.style.padding = '10px';
+                canvas.style.backgroundColor = 'white';
+                
+                generateSimpleQR(url, canvas);
+                container.appendChild(canvas);
+            } catch (error) {
+                console.error('二维码生成失败:', error);
+                container.innerHTML = '<p style="color: #e74c3c;">二维码生成失败</p>';
+            }
+        }
+
+        // 生成二维码 (弹窗)
+        function generateQRCodeModal(url) {
+            const container = document.getElementById('qrCodeContainerModal');
+            container.innerHTML = '';
+            
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = 200;
+                canvas.height = 200;
+                canvas.style.border = '1px solid #ddd';
+                canvas.style.padding = '10px';
+                canvas.style.backgroundColor = 'white';
+                
+                generateSimpleQR(url, canvas);
+                container.appendChild(canvas);
+            } catch (error) {
+                console.error('二维码生成失败:', error);
+                container.innerHTML = '<p style="color: #e74c3c;">二维码生成失败</p>';
+            }
+        }
+
+        // 简单的二维码生成函数
+        function generateSimpleQR(text, canvas) {
+            const ctx = canvas.getContext('2d');
+            const size = canvas.width;
+            const cellSize = Math.floor(size / 25);
+            
+            // 清空画布
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, size, size);
+            
+            // 生成基于文本的简单图案
+            const hash = simpleHash(text);
+            const pattern = generatePatternFromHash(hash, 25);
+            
+            // 绘制二维码图案
+            ctx.fillStyle = 'black';
+            for (let i = 0; i < 25; i++) {
+                for (let j = 0; j < 25; j++) {
+                    if (pattern[i][j]) {
+                        ctx.fillRect(j * cellSize, i * cellSize, cellSize, cellSize);
+                    }
+                }
+            }
+            
+            // 添加定位标记
+            drawPositionMarkers(ctx, size, cellSize);
+        }
+
+        // 简单哈希函数
+        function simpleHash(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            return Math.abs(hash);
+        }
+
+        // 根据哈希值生成图案
+        function generatePatternFromHash(hash, size) {
+            const pattern = [];
+            for (let i = 0; i < size; i++) {
+                pattern[i] = [];
+                for (let j = 0; j < size; j++) {
+                    const bitPos = (i * size + j) % 32;
+                    pattern[i][j] = (hash & (1 << bitPos)) !== 0;
+                }
+            }
+            return pattern;
+        }
+
+        // 绘制定位标记
+        function drawPositionMarkers(ctx, size, cellSize) {
+            const markerSize = 7 * cellSize;
+            
+            // 左上角
+            drawMarker(ctx, 0, 0, markerSize, cellSize);
+            // 右上角
+            drawMarker(ctx, size - markerSize, 0, markerSize, cellSize);
+            // 左下角
+            drawMarker(ctx, 0, size - markerSize, markerSize, cellSize);
+        }
+
+        // 绘制单个定位标记
+        function drawMarker(ctx, x, y, size, cellSize) {
+            // 外框
+            ctx.fillStyle = 'black';
+            ctx.fillRect(x, y, size, size);
+            
+            // 内框（白色）
+            ctx.fillStyle = 'white';
+            ctx.fillRect(x + cellSize, y + cellSize, size - 2 * cellSize, size - 2 * cellSize);
+            
+            // 中心点（黑色）
+            ctx.fillStyle = 'black';
+            ctx.fillRect(x + 2 * cellSize, y + 2 * cellSize, size - 4 * cellSize, size - 4 * cellSize);
+        }
+
+        // 关闭二维码弹窗
+        function closeQRCodeModal() {
+            document.getElementById('qrCodeModal').style.display = 'none';
+        }
+
+        // 复制群号
+        function copyGroupNumber() {
+            const number = currentGroupInfo.number;
+            navigator.clipboard.writeText(number).then(() => {
+                alert('群号已复制到剪贴板：' + number);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                const textArea = document.createElement('textarea');
+                textArea.value = number;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('群号已复制到剪贴板：' + number);
+            });
+        }
+
+        // 打开QQ链接
+        function openQQUrl() {
+            if (currentGroupInfo.link) {
+                window.open(currentGroupInfo.link, '_blank');
+            }
+        }
+
+        // 点击弹窗外部关闭
+        window.onclick = function(event) {
+            if (event.target.id === 'qrCodeModal') {
+                closeQRCodeModal();
+            }
+        }
+    </script>
+</body>
+</html>

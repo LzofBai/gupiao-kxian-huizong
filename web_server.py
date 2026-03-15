@@ -29,10 +29,18 @@ log = Logger('logs/web_server.log', level='info').logger
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
 
+
+# 全局模板上下文处理器 - 确保所有模板都能访问推广配置
+@app.context_processor
+def inject_promotion_config():
+    return {'promotion_config': load_promotion_config()}
+
+
 # 配置文件路径（现在只存UI配置）
 UI_CONFIG_FILE = 'data/zs_fund_online_ui.json'
 DB_FILE = 'data/funds.db'
 CONFIG_FILE = UI_CONFIG_FILE  # 兼容旧代码
+PROMOTION_CONFIG_FILE = 'config/promotion.json'
 
 # 创建数据库实例
 db = FundDatabase(DB_FILE)
@@ -93,6 +101,22 @@ def check_and_fetch_missing_descriptions():
 ensure_descriptions_initialized()
 
 
+def load_promotion_config():
+    """加载推广配置"""
+    try:
+        if os.path.exists(PROMOTION_CONFIG_FILE):
+            with open(PROMOTION_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        log.error(f"加载推广配置失败: {e}")
+    return {
+        "qq_groups": [],
+        "show_qq_groups": False,
+        "button_text": "👥 加群交流",
+        "button_style": {"background": "#12B7F5", "color": "white"}
+    }
+
+
 def generate_monitor_html():
     """生成监控页面HTML"""
     try:
@@ -107,6 +131,9 @@ def generate_monitor_html():
         int_unitWidth = ui_config.get('unitWidth', -5)
         zs_descriptions = ui_config.get('zs_descriptions', {})
         
+        # 加载推广配置
+        promotion_config = load_promotion_config()
+        
         # 生成HTML
         return render_template(
             'monitor.html',
@@ -116,6 +143,7 @@ def generate_monitor_html():
             list_formula=list_formula,
             int_unitWidth=int_unitWidth,
             zs_descriptions=zs_descriptions,
+            promotion_config=promotion_config,
             update_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         )
     except Exception as e:

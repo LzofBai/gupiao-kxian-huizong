@@ -2144,31 +2144,9 @@
                     const today = this.getTodayKey();
                     const noteId = 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                     
-                    const note = {
-                        id: noteId,
-                        date: today,
-                        content: '<p><br></p>',
-                        createTime: Date.now(),
-                        updateTime: Date.now()
-                    };
-                    
-                    this.setStatus('正在创建...', false, true);
-                    
-                    // 保存到服务器
-                    console.log('[新建笔记] 正在保存到服务器...');
-                    const savedNote = await this.saveToServer(note);
-                    
-                    if (!savedNote) {
-                        console.error('[新建笔记] 保存失败');
-                        this.setStatus('创建失败', false, true);
-                        showToast('❌ 笔记创建失败，请检查网络连接');
-                        return;
-                    }
-                    
-                    console.log('[新建笔记] 保存成功:', savedNote);
-                    
-                    // 加载新笔记
+                    // 加载新笔记（先不保存到服务器，等有内容时再保存）
                     this.currentNoteId = noteId;
+                    this.pendingNoteDate = today; // 记录待保存的笔记日期
                     const editor = document.getElementById('dailyNotes');
                     if (editor) {
                         editor.innerHTML = '<p><br></p>';
@@ -2184,14 +2162,12 @@
                     }
                     
                     this.updateWordCount();
-                    this.setStatus('新笔记', true);
-                    this.updateHistoryList();
+                    this.setStatus('新笔记 - 输入内容后自动保存', true);
                     
                     // 切换到编辑视图
                     switchNotesView('edit');
                     
-                    console.log('[新建笔记] 创建完成');
-                    showToast('✅ 新笔记创建成功');
+                    console.log('[新建笔记] 创建完成，等待用户输入内容');
                     
                 } catch (error) {
                     console.error('[新建笔记] 异常:', error);
@@ -2237,17 +2213,18 @@
                 
                 const content = editor.innerHTML;
                 
-                // 如果内容为空，删除该笔记
+                // 检查内容是否为空或只包含空格等无意义内容
                 if (this.isContentEmpty(content)) {
-                    console.log('[保存笔记] 内容为空，准备删除笔记');
-                    await this.deleteNote(this.currentNoteId, false);
-                    this.setStatus('内容为空，已删除', true);
+                    console.log('[保存笔记] 内容为空或只包含空格，不进行保存');
+                    this.setStatus('内容为空，未保存', true);
                     return;
                 }
                 
                 // 获取当前笔记
-                const note = this.notes.find(n => n.id === this.currentNoteId);
+                let note = this.notes.find(n => n.id === this.currentNoteId);
+                
                 if (note) {
+                    // 更新已有笔记
                     console.log('[保存笔记] 开始保存笔记:', this.currentNoteId);
                     
                     note.content = content;
@@ -2264,8 +2241,29 @@
                         showToast('❌ 笔记保存失败，请检查网络连接');
                     }
                 } else {
-                    console.error('[保存笔记] 找不到当前笔记:', this.currentNoteId);
-                    this.setStatus('笔记不存在', false, true);
+                    // 新笔记（之前未保存过），需要创建并保存
+                    console.log('[保存笔记] 创建并保存新笔记:', this.currentNoteId);
+                    
+                    const today = this.pendingNoteDate || this.getTodayKey();
+                    note = {
+                        id: this.currentNoteId,
+                        date: today,
+                        content: content,
+                        createTime: Date.now(),
+                        updateTime: Date.now()
+                    };
+                    
+                    const savedNote = await this.saveToServer(note);
+                    if (savedNote) {
+                        console.log('[保存笔记] 新笔记保存成功');
+                        this.setStatus('已保存', true);
+                        this.updateHistoryList();
+                        showToast('✅ 笔记保存成功');
+                    } else {
+                        console.error('[保存笔记] 新笔记保存失败');
+                        this.setStatus('保存失败', false, true);
+                        showToast('❌ 笔记保存失败，请检查网络连接');
+                    }
                 }
             },
             
